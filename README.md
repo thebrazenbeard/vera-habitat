@@ -46,6 +46,22 @@ These are **not** a physical engine, persistent database, autonomous RL agent,
 renderer, or a new authority route to Vera. See
 [Architecture V2](docs/ARCHITECTURE_V2.md) for tested contracts and limits.
 
+## V0.3 candidate: opt-in authenticated local recovery
+
+`AuthenticatedFileStore` supports explicit local save/load of simulated
+Habitat checkpoints, authenticated by an **externally supplied HMAC key**.
+It preserves versioned state and action receipts, requires an expected prior
+seal and an append-only receipt continuation before overwriting, and uses
+same-directory temporary files with atomic replacement. Loading validates the keyed MAC before reconstructing the world.
+
+Importing Habitat neither creates a file nor connects to Vera. This does
+**not** authenticate the writer's personal identity, stop signed-file
+rollback, coordinate concurrent writers, or establish canonical Vera
+runtime/memory currentness. No secret keys or services are provisioned.
+
+See [Local authenticated recovery V1](docs/LOCAL_AUTHENTICATED_RECOVERY_V1.md)
+for an explicit usage example and the security/failure limitations.
+
 ## Quick start
 
 ```bash
