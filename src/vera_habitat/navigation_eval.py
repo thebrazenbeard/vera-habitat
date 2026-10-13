@@ -21,7 +21,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--episodes", type=int, default=20,
                         help="Number of deterministic seed layouts (1..20)")
     parser.add_argument("--policies", nargs="+",
-                        choices=("random", "greedy", "oracle"),
+                        choices=("random", "greedy", "memory", "oracle"),
                         default=["random", "greedy", "oracle"])
     args = parser.parse_args(argv)
     pool = TRAIN_SEEDS if args.split == "train" else HOLDOUT_SEEDS
