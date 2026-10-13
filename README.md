@@ -32,7 +32,9 @@ The V1 foundation implements:
 V2 adds:
 - a portable JSON checkpoint of scene, receipt history and replay guard, with
   schema validation and SHA-256 content fingerprinting (**not** authenticity);
-- protection against applying the same proposal action ID more than once;
+- protection against applying the same proposal action ID more than once,
+  including a restore-time check for causally impossible duplicate-action
+  and duplicate-spawn receipts;
 - a detached renderer JSON projection with no mutation authority;
 - a read-only 3D AABB broad-phase candidate index, with independent tests;
 - bounded `times`/`states` trajectory-to-*proposal* previews compatible

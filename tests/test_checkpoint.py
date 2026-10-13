@@ -130,3 +130,61 @@ def test_checkpoint_rejects_oversized_and_nonjson_payload():
         HabitatRuntime.from_checkpoint("{" * 2_000_000)
     with pytest.raises(ValueError):
         HabitatRuntime.from_checkpoint("not-json")
+
+
+def test_checkpoint_rejects_duplicate_spawn_without_prior_spawn():
+    from vera_habitat.checkpoint import canonical_digest
+    record = json.loads(HabitatRuntime().export_checkpoint())
+    record["receipts"] = [{
+        "action_id": "spawn:ghost", "accepted": False,
+        "disposition": "DUPLICATE_ENTITY_REJECTED",
+        "revision_before": 0, "revision_after": 0,
+    }]
+    record["sha256"] = canonical_digest(record)
+    with pytest.raises(ValueError):
+        HabitatRuntime.from_checkpoint(json.dumps(record))
+
+
+def test_checkpoint_rejects_duplicate_action_without_first_action():
+    from vera_habitat.checkpoint import canonical_digest
+    record = json.loads(HabitatRuntime().export_checkpoint())
+    record["receipts"] = [{
+        "action_id": "first", "accepted": False,
+        "disposition": "DUPLICATE_ACTION_ID",
+        "revision_before": 0, "revision_after": 0,
+    }]
+    record["seen_action_ids"] = ["first"]
+    record["sha256"] = canonical_digest(record)
+    with pytest.raises(ValueError):
+        HabitatRuntime.from_checkpoint(json.dumps(record))
+
+
+def test_checkpoint_rejects_repeated_accepted_action_id():
+    from vera_habitat.checkpoint import canonical_digest
+    world = example_runtime()
+    world.propose(Proposal("move-first", EffectClass.SIMULATION_ONLY,
+                           "MOVE_ENTITY", "vera", Position3(1, 0, 0)))
+    world.propose(Proposal("move-second", EffectClass.SIMULATION_ONLY,
+                           "MOVE_ENTITY", "vera", Position3(2, 0, 0)))
+    record = json.loads(world.export_checkpoint())
+    record["receipts"][-1]["action_id"] = "move-first"
+    record["seen_action_ids"] = ["move-first"]
+    record["sha256"] = canonical_digest(record)
+    with pytest.raises(ValueError):
+        HabitatRuntime.from_checkpoint(json.dumps(record))
+
+
+def test_legal_duplicate_rejection_history_still_roundtrips():
+    world = example_runtime()
+    move = Proposal("moved-once", EffectClass.SIMULATION_ONLY,
+                    "MOVE_ENTITY", "vera", Position3(3, 0, 0))
+    assert world.propose(move).accepted
+    assert world.propose(move).disposition == "DUPLICATE_ACTION_ID"
+    assert world.spawn(Entity("vera", "AVATAR", "home",
+                              Position3(9, 0, 0))).disposition == "DUPLICATE_ENTITY_REJECTED"
+    assert world.propose(Proposal("no-external", EffectClass.EXTERNAL_REQUEST,
+                          "MOVE_ENTITY", "vera", Position3(7, 0, 0))).disposition == "EXTERNAL_EFFECT_UNAVAILABLE"
+    checkpoint = world.export_checkpoint()
+    result = HabitatRuntime.from_checkpoint(checkpoint)
+    assert result.export_checkpoint() == checkpoint
+    assert result.snapshot() == world.snapshot()

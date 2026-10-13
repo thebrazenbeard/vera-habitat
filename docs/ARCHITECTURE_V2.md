@@ -17,6 +17,10 @@ loop, hardware actuator, or background service was installed.
   receipt history and the duplicate-action guard as stable canonical JSON.
   `from_checkpoint(json_text)` verifies SHA-256, schema, value types, sorted
   membership, receipt-revision continuity and action-ID correspondence.
+  The importer rejects causally impossible duplicates: duplicate-spawn
+  rejection without a prior accepted spawn, duplicate-action rejection without
+  an earlier proposal, and multiple accepted applications of one action ID.
+  Ordinary duplicate rejections remain importable and replay-safe.
   Restoring constructs a *new isolated runtime*, not a current Vera endpoint.
 - **Checkpoint caveat:** SHA-256 is a *content fingerprint*, not a digital
   signature, trusted production currentness, or proof of actual historical

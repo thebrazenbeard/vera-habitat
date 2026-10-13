@@ -174,15 +174,22 @@ def load_checkpoint(source: str) -> tuple[int, dict[str, Entity], list[ActionRec
                 raise ValueError("spawn receipt id invalid")
             if rec["accepted"] != (disposition == "SIMULATION_ENTITY_SPAWNED"):
                 raise ValueError("spawn disposition contradicts acceptance")
+            eid = aid.removeprefix("spawn:")
             if rec["accepted"]:
-                eid = aid.removeprefix("spawn:")
                 if eid in spawned_ids:
                     raise ValueError("entity cannot be spawned twice")
                 spawned_ids.add(eid)
+            elif eid not in spawned_ids:
+                raise ValueError("duplicate spawn rejection lacks an earlier spawn")
         else:
-            proposal_ids.add(aid)
+            if aid in proposal_ids:
+                if rec["accepted"] or disposition != "DUPLICATE_ACTION_ID":
+                    raise ValueError("replayed proposal must be rejected as duplicate")
+            elif disposition == "DUPLICATE_ACTION_ID":
+                raise ValueError("duplicate proposal rejection lacks an earlier proposal")
             if rec["accepted"] != (disposition == "SIMULATION_MOVE_APPLIED"):
                 raise ValueError("proposal disposition contradicts acceptance")
+            proposal_ids.add(aid)
         receipts.append(ActionReceipt(aid, rec["accepted"], disposition, before, after))
         cursor = after
     if cursor != revision:
