@@ -84,12 +84,15 @@ class StepFeedback:
 class NavigationEpisode:
     """Explicit reset/step interface; world truth never passed to policy."""
     def __init__(self, seed: int, *, sensor_range_m: float = 2.0,
-                 max_steps: int = 40):
+                 max_steps: int = 40, family: str = "barrier"):
         if type(sensor_range_m) not in (int, float) or (
                 not isfinite(sensor_range_m) or sensor_range_m <= 0):
             raise ValueError("sensor_range_m must be positive and finite")
         if type(max_steps) is not int or not 1 <= max_steps <= 10000:
             raise ValueError("max_steps must be an integer in [1,10000]")
+        if family not in ("barrier", "zigzag"):
+            raise ValueError("unknown scenario family")
+        self.family = family
         self.sensor_range_m = float(sensor_range_m)
         self.max_steps = max_steps
         self.scenario: Scenario
@@ -98,7 +101,8 @@ class NavigationEpisode:
         self.reset(seed)
 
     def reset(self, seed: int) -> AgentObservation:
-        self.scenario = make_scenario(seed)
+        self.scenario = (make_scenario(seed) if self.family == "barrier"
+                         else make_zigzag_scenario(seed))
         s = self.scenario
         self._world = NeutralTrainingGround(
             width_m=s.width_m, height_m=s.height_m,
@@ -301,7 +305,12 @@ def run_episode(episode: NavigationEpisode, policy: Policy) -> EpisodeResult:
 def evaluate_baselines(
     *, seeds: Sequence[int] = HOLDOUT_SEEDS,
     policies: Sequence[str] = ("random", "greedy", "oracle"),
+    family: str = "barrier", max_steps: int = 40,
 ) -> tuple[BaselineReport, ...]:
+    if family not in ("barrier", "zigzag"):
+        raise ValueError("unknown scenario family")
+    if type(max_steps) is not int or not 1 <= max_steps <= 10000:
+        raise ValueError("max_steps must be in [1,10000]")
     seeds = tuple(seeds)
     policies = tuple(policies)
     if not seeds or len(seeds) > 10000 or len(set(seeds)) != len(seeds):
@@ -316,7 +325,7 @@ def evaluate_baselines(
     for name in policies:
         results: list[EpisodeResult] = []
         for seed in seeds:
-            ep = NavigationEpisode(seed, max_steps=40)
+            ep = NavigationEpisode(seed, max_steps=max_steps, family=family)
             if name == "random":
                 policy: Policy = RandomPolicy((seed + 12345) % 2**32)
             elif name == "greedy":
@@ -341,4 +350,21 @@ def evaluate_baselines(
 
 
 def make_zigzag_scenario(seed: int) -> Scenario:
-    raise NotImplementedError("second scenario family missing")
+    """Two staggered obstacles force navigation through opposing gaps.
+
+    Pure synthetic geometry. Unlike the single-barrier family, the
+    shortest cardinal reference path may require large non-monotonic
+    detours both north and south before reaching the goal.
+    """
+    _integer(seed, "seed")
+    rng = Random(seed)
+    x1 = rng.choice((3.1, 3.4, 3.7))
+    x2 = rng.choice((6.0, 6.3, 6.6))
+    lower_top = rng.choice((6.8, 7.4, 8.1))
+    upper_bottom = rng.choice((1.8, 2.4, 3.1))
+    boxes = (
+        Obstacle2("lower_barrier", x1, 0.0, x1 + .8, lower_top),
+        Obstacle2("upper_barrier", x2, upper_bottom, x2 + .8, 10.0),
+    )
+    return Scenario(seed=seed, obstacles=boxes)
+
