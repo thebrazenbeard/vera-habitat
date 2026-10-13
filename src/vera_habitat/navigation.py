@@ -306,11 +306,15 @@ def evaluate_baselines(
     *, seeds: Sequence[int] = HOLDOUT_SEEDS,
     policies: Sequence[str] = ("random", "greedy", "oracle"),
     family: str = "barrier", max_steps: int = 40,
+    sensor_range_m: float = 2.0,
 ) -> tuple[BaselineReport, ...]:
     if family not in ("barrier", "zigzag"):
         raise ValueError("unknown scenario family")
     if type(max_steps) is not int or not 1 <= max_steps <= 10000:
         raise ValueError("max_steps must be in [1,10000]")
+    if (type(sensor_range_m) not in (int, float) or
+            not isfinite(sensor_range_m) or sensor_range_m <= 0):
+        raise ValueError("sensor_range_m must be positive and finite")
     seeds = tuple(seeds)
     policies = tuple(policies)
     if not seeds or len(seeds) > 10000 or len(set(seeds)) != len(seeds):
@@ -325,7 +329,8 @@ def evaluate_baselines(
     for name in policies:
         results: list[EpisodeResult] = []
         for seed in seeds:
-            ep = NavigationEpisode(seed, max_steps=max_steps, family=family)
+            ep = NavigationEpisode(seed, max_steps=max_steps, family=family,
+                                   sensor_range_m=sensor_range_m)
             if name == "random":
                 policy: Policy = RandomPolicy((seed + 12345) % 2**32)
             elif name == "greedy":
