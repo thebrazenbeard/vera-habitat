@@ -112,3 +112,22 @@ def test_random_policy_is_seeded():
     a, b = RandomPolicy(11), RandomPolicy(11)
     for _ in range(30):
         assert a.choose_action(env.observe()) == b.choose_action(env.observe())
+
+
+def test_some_holdout_maps_require_moving_away_from_goal():
+    references = []
+    for seed in HOLDOUT_SEEDS:
+        ep = NavigationEpisode(seed)
+        result = run_episode(ep, OracleAStarPolicy(ep.scenario))
+        manhattan = (abs(ep.scenario.goal[0] - ep.scenario.start[0]) +
+                     abs(ep.scenario.goal[1] - ep.scenario.start[1]))
+        references.append(result.grid_reference_steps - manhattan)
+        assert result.success
+    assert any(extra > 0 for extra in references), "all mazes permit monotonic progress"
+    assert any(extra == 0 for extra in references), "missing easier control maps"
+
+
+def test_maximum_valid_seed_does_not_overflow_random_baseline():
+    result = evaluate_baselines(seeds=(2**32 - 1,), policies=("random",))
+    assert len(result) == 1
+    assert result[0].episodes == 1
