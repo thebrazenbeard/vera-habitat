@@ -59,3 +59,19 @@ def test_memory_baseline_is_explicit_cli_option(capsys):
     assert len(data["baselines"]) == 1
     assert data["baselines"][0]["policy"] == "memory"
     assert not data["baselines"][0]["privileged_map"]
+
+
+def test_sensor_range_is_explicit_evaluation_dimension(capsys):
+    import json
+    import pytest
+    from vera_habitat.navigation_eval import main
+    args = ["--split", "holdout", "--episodes", "3", "--family", "zigzag",
+            "--max-steps", "60", "--sensor-range", "0.5",
+            "--policies", "memory", "oracle"]
+    assert main(args) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["sensor_range_m"] == 0.5
+    assert data["baselines"][0]["privileged_map"] is False
+    assert data["baselines"][1]["privileged_map"] is True
+    with pytest.raises(ValueError):
+        evaluate_baselines(seeds=(1000,), sensor_range_m=0.0)
