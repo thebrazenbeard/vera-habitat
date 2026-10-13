@@ -309,7 +309,7 @@ def evaluate_baselines(
     for seed in seeds:
         _integer(seed, "seed")
     if not policies or len(set(policies)) != len(policies) or any(
-        p not in ("random", "greedy", "oracle") for p in policies
+        p not in ("random", "greedy", "memory", "oracle") for p in policies
     ):
         raise ValueError("unknown or duplicate baseline policy")
     reports: list[BaselineReport] = []
@@ -321,6 +321,9 @@ def evaluate_baselines(
                 policy: Policy = RandomPolicy((seed + 12345) % 2**32)
             elif name == "greedy":
                 policy = GreedyPolicy()
+            elif name == "memory":
+                from .mapping_policy import MemoryMapPolicy
+                policy = MemoryMapPolicy()
             else:
                 policy = OracleAStarPolicy(ep.scenario)
             results.append(run_episode(ep, policy))
