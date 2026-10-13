@@ -10,7 +10,7 @@ The Habitat is a modeled world Vera may observe and interact with. It is not Ver
 
 A useful habitat needs a deterministic state core before it needs a renderer.
 
-V1 therefore implements:
+The V1 foundation implements:
 - versioned virtual world state;
 - typed entities and 3D positions;
 - deterministic simulation-only actions;
@@ -27,6 +27,23 @@ V1 therefore implements:
 
 `SCENE_SNAPSHOT != MEMORY`
 
+## V2: source-only reconstruction and spatial capability
+
+V2 adds:
+- a portable JSON checkpoint of scene, receipt history and replay guard, with
+  schema validation and SHA-256 content fingerprinting (**not** authenticity);
+- protection against applying the same proposal action ID more than once;
+- a detached renderer JSON projection with no mutation authority;
+- a read-only 3D AABB broad-phase candidate index, with independent tests;
+- bounded `times`/`states` trajectory-to-*proposal* previews compatible
+  with Physica's numerical output protocol, without automatic submission;
+- adversarial regression tests, source-bound review of the eleven supplied
+  physics, geometry, learning and Unreal interoperability repositories.
+
+These are **not** a physical engine, persistent database, autonomous RL agent,
+renderer, or a new authority route to Vera. See
+[Architecture V2](docs/ARCHITECTURE_V2.md) for tested contracts and limits.
+
 ## Quick start
 
 ```bash
@@ -35,10 +52,27 @@ pytest
 python -m vera_habitat.demo
 ```
 
-The demo creates a room, spawns a Vera avatar, applies a simulation-only move, and prints the resulting snapshot and receipt.
+The demo creates a room, spawns a Vera avatar, applies a simulation-only
+move, and prints the snapshot and receipt.
+
+```python
+from vera_habitat import (
+    HabitatRuntime, AABB3, SpatialProjection, render_scene_json, Position3,
+)
+
+# World state is still owned by HabitatRuntime, never by its projection.
+world = HabitatRuntime()
+# After explicitly spawning entities and accepting any proposals:
+checkpoint = world.export_checkpoint()
+restored = HabitatRuntime.from_checkpoint(checkpoint)
+scene_json = render_scene_json(restored.snapshot())
+```
+
+A checkpoint has a digest for integrity, not a signed origin. Its source label
+and source-control commit do **not** imply a live Vera runtime was updated.
 
 ## Runtime binding
 
 The canonical Vera portfolio currently classifies this repository as `NO_AUTO_BIND`. This source foundation does not change that. A renderer, Vera runtime route, embodiment link, network transport, or physical-world actuator requires separate design, authorization, and qualification.
 
-See [docs/ARCHITECTURE_V1.md](docs/ARCHITECTURE_V1.md) and [docs/AUTHORITY_AND_RENDERER_BOUNDARY_V1.md](docs/AUTHORITY_AND_RENDERER_BOUNDARY_V1.md).
+See [Architecture V1](docs/ARCHITECTURE_V1.md), [Architecture V2](docs/ARCHITECTURE_V2.md), and [Authority and renderer boundary](docs/AUTHORITY_AND_RENDERER_BOUNDARY_V1.md).
