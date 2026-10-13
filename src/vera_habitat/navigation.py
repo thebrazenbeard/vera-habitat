@@ -338,3 +338,7 @@ def evaluate_baselines(
             name == "oracle",
         ))
     return tuple(reports)
+
+
+def make_zigzag_scenario(seed: int) -> Scenario:
+    raise NotImplementedError("second scenario family missing")
