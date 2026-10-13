@@ -27,7 +27,7 @@ def test_deterministic_world_and_snapshot_projection():
 
 
 def test_swept_obstacle_prevents_tunneling_without_revision_mutation():
-    g = NeutralTrainingGround(speed_mps=10.0)
+    g = NeutralTrainingGround(speed_mps=8.0)
     before = g.observe()
     blocked = g.step(move(1))
     assert not blocked.accepted
