@@ -30,7 +30,7 @@ def _integer(value: object, name: str) -> int:
 class Scenario:
     seed: int
     obstacles: tuple[Obstacle2, ...]
-    start: tuple[float, float] = (1.0, 1.0)
+    start: tuple[float, float] = (1.0, 2.0)
     goal: tuple[float, float] = (8.0, 8.0)
     width_m: float = 10.0
     height_m: float = 10.0
@@ -44,10 +44,13 @@ def make_scenario(seed: int) -> Scenario:
     rng = Random(seed)
     left = rng.choice((3.4, 3.8, 4.2, 4.6))
     right = left + rng.choice((0.8, 1.0))
-    edge = rng.choice((3.5, 4.5, 5.5, 6.5))
+    # Half the cases demand a detour *away* from the direct goal heading.
+    # Crossing at y=1 or y=9 remains possible for a radius-0.2 avatar.
     if rng.randrange(2):
+        edge = rng.choice((6.5, 8.5))
         wall = Obstacle2("barrier", left, 0.0, right, edge)
     else:
+        edge = rng.choice((1.5, 3.5))
         wall = Obstacle2("barrier", left, edge, right, 10.0)
     return Scenario(seed=seed, obstacles=(wall,))
 
@@ -315,7 +318,7 @@ def evaluate_baselines(
         for seed in seeds:
             ep = NavigationEpisode(seed, max_steps=40)
             if name == "random":
-                policy: Policy = RandomPolicy(seed + 12345)
+                policy: Policy = RandomPolicy((seed + 12345) % 2**32)
             elif name == "greedy":
                 policy = GreedyPolicy()
             else:
