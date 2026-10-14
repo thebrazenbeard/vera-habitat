@@ -62,6 +62,15 @@ runtime/memory currentness. No secret keys or services are provisioned.
 See [Local authenticated recovery V1](docs/LOCAL_AUTHENTICATED_RECOVERY_V1.md)
 for an explicit usage example and the security/failure limitations.
 
+## V0.3.1 candidate: cooperating local writer coordination
+
+The optional authenticated file store now takes a persistent sidecar OS lock
+for the full predecessor-check/write critical section. Timeouts fail closed;
+a second cooperating process cannot overwrite a winning generation using a
+stale predecessor seal. The lock does **not** solve trusted anti-rollback,
+distributed/NAS concurrency, or hostile file tampering. See the
+[recovery threat model](docs/LOCAL_AUTHENTICATED_RECOVERY_V1.md).
+
 ## Quick start
 
 ```bash

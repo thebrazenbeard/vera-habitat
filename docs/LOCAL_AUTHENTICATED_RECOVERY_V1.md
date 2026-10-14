@@ -73,6 +73,14 @@ checkpoint cannot be authenticated with a new key.
   receipt (which may be rejected without incrementing the scene revision).
   This guards against accidental divergent saves, **not** authorized-key
   forgery or replacement by an older valid signed file.
+- Explicit saves acquire an advisory cross-process OS lock on a persistent
+  `checkpoint.sealed.json.lock` sidecar before inspecting the existing file.
+  Lock acquisition is bounded by a configurable `lock_timeout_seconds`
+  (default 2 seconds; range 0..30) and raises `TimeoutError` if busy.
+  Windows byte-range locks and POSIX `flock` coordinate cooperating local
+  writers; the sidecar **must not be deleted** because that permits two
+  processes to lock different underlying files. Readers can still load an
+  atomically replaced authenticated file without acquiring a write lock.
 - New bytes are written into a temporary file in the same directory,
   flushed and `fsync`-ed, then installed using `os.replace`. An exception
   during replacement leaves the preexisting file unchanged in tested fault
@@ -88,14 +96,18 @@ checkpoint cannot be authenticated with a new key.
    rollback. The parent MAC and sequence do **not** prevent this without an
    independently trusted monotonic high-water mark. Such an external anchor
    does not exist in this package.
-2. The `expected_seal` check is **not a cross-process compare-and-swap**:
-   concurrent writers can race between check and `os.replace`. The caller
-   must enforce one active writer and access control.
+2. The lock prevents the check/replace race for **cooperating processes on
+   the same locally supported filesystem and stable sidecar path**; this is
+   not a distributed or network-filesystem compare-and-swap and does not
+   prevent a hostile/uncooperative writer from bypassing the lock. Trusted
+   directory control, protected lock-file permissions and filesystem
+   capabilities remain essential.
 3. Atomic file replacement and file `fsync` do not provide universal
    directory crash-durability guarantees on all filesystems, especially
    Windows/network-mounted filesystems. Use independent backups and recovery
    drills before operational reliance.
-4. A tampered key, compromised host, trusted-path symlink-swap race,
+4. A tampered key, compromised host, deliberate sidecar removal/replacement,
+   trusted-path symlink-swap race,
    manipulated OS, or malicious authorized writer remains out of scope.
 5. Nothing authenticates Git commit provenance, assigns Vera's identity,
    persists autobiographical memory, confirms actual external effects, or

@@ -263,3 +263,152 @@ def test_authenticated_old_file_can_still_be_rolled_back_without_trusted_anchor(
     path.write_bytes(old_valid_data)  # attacker with file write access
     assert s.load().sequence == 1
     assert s.load().seal == first.seal
+
+
+
+def test_lock_timeout_configuration_is_bounded_and_explicit(tmp_path):
+    location = tmp_path / "checkpoint.sealed.json"
+    for invalid in (-1, float("nan"), float("inf"), True, "instant"):
+        with pytest.raises(ValueError):
+            AuthenticatedFileStore(location, KEY, writer_id="offline-local-test",
+                                   lock_timeout_seconds=invalid)
+    s = AuthenticatedFileStore(location, KEY, writer_id="offline-local-test",
+                               lock_timeout_seconds=0.1)
+    assert not location.exists()
+    assert not list(tmp_path.iterdir())
+    assert s.save(world()).sequence == 1
+
+
+def test_another_process_lock_cannot_be_bypassed_by_a_second_writer(tmp_path):
+    import subprocess
+    import sys
+    import os
+    location = tmp_path / "checkpoint.sealed.json"
+    s = AuthenticatedFileStore(location, KEY, writer_id="offline-local-test",
+                               lock_timeout_seconds=0.12)
+    initial = s.save(world())
+    original = location.read_bytes()
+    script = """
+import sys
+import time
+from pathlib import Path
+from vera_habitat.persistence import _exclusive_checkpoint_lock
+with _exclusive_checkpoint_lock(Path(sys.argv[1]), 2.0):
+    print("LOCKED", flush=True)
+    time.sleep(1.0)
+"""
+    child = subprocess.Popen(
+        [sys.executable, "-c", script, str(location)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        env=os.environ.copy(),
+    )
+    try:
+        assert child.stdout is not None
+        assert child.stdout.readline().strip() == "LOCKED"
+        changed = s.load().runtime
+        changed.propose(ActionProposal("new-locked", EffectClass.SIMULATION_ONLY,
+                                       "MOVE_ENTITY", "vera", Position3(5, 2, 0)))
+        with pytest.raises(TimeoutError, match="lock"):
+            s.save(changed, expected_seal=initial.seal)
+        assert location.read_bytes() == original
+        out, err = child.communicate(timeout=7)
+        assert child.returncode == 0, err
+        second = s.save(changed, expected_seal=initial.seal)
+        assert second.sequence == 2
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.communicate(timeout=5)
+
+
+def test_stale_writer_after_a_concurrent_save_is_rejected(tmp_path):
+    import subprocess
+    import sys
+    import os
+    location = tmp_path / "checkpoint.sealed.json"
+    s = AuthenticatedFileStore(location, KEY, writer_id="offline-local-test",
+                               lock_timeout_seconds=3.0)
+    old = s.save(world())
+    stale = s.load().runtime
+    stale.propose(ActionProposal("stale-update", EffectClass.SIMULATION_ONLY,
+                                 "MOVE_ENTITY", "vera", Position3(8, 0, 0)))
+    script = """
+import sys, time
+from pathlib import Path
+from vera_habitat import AuthenticatedFileStore, ActionProposal, EffectClass, Position3
+from vera_habitat.persistence import _exclusive_checkpoint_lock
+s=AuthenticatedFileStore(Path(sys.argv[1]), bytes(range(32)), writer_id="offline-local-test")
+with _exclusive_checkpoint_lock(Path(sys.argv[1]), 2.0):
+    print("LOCKED", flush=True)
+    w=s.load().runtime
+    w.propose(ActionProposal("winner-update", EffectClass.SIMULATION_ONLY,
+                             "MOVE_ENTITY", "vera", Position3(3,0,0)))
+    s._save_unlocked(w, expected_seal=sys.argv[2])
+    time.sleep(0.5)
+"""
+    child = subprocess.Popen(
+        [sys.executable, "-c", script, str(location), old.seal],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        env=os.environ.copy(),
+    )
+    try:
+        assert child.stdout is not None
+        assert child.stdout.readline().strip() == "LOCKED"
+        with pytest.raises(ValueError, match="expected_seal"):
+            s.save(stale, expected_seal=old.seal)
+        out, err = child.communicate(timeout=7)
+        assert child.returncode == 0, err
+        current = s.load()
+        assert current.sequence == 2
+        assert current.runtime.snapshot().entities[0].position == Position3(3,0,0)
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.communicate(timeout=5)
+
+
+
+def test_stable_sidecar_remains_across_generations(tmp_path):
+    from pathlib import Path
+    s = store(tmp_path)
+    sidecar = tmp_path / "checkpoint.sealed.json.lock"
+    assert not sidecar.exists()
+    first = s.save(world())
+    assert sidecar.is_file()
+    before = sidecar.stat()
+    w = s.load().runtime
+    w.propose(ActionProposal("next-sidecar", EffectClass.SIMULATION_ONLY,
+                             "MOVE_ENTITY", "vera", Position3(7, 1, 0)))
+    second = s.save(w, expected_seal=first.seal)
+    after = sidecar.stat()
+    assert second.sequence == 2
+    assert sidecar.is_file()
+    assert after.st_ino == before.st_ino
+    assert (tmp_path / "checkpoint.sealed.json").is_file()
+
+
+def test_lock_released_when_save_fails_validation(tmp_path):
+    s = AuthenticatedFileStore(tmp_path / "checkpoint.sealed.json", KEY,
+                               writer_id="offline-local-test",
+                               lock_timeout_seconds=0.0)
+    first = s.save(world())
+    candidate = s.load().runtime
+    candidate.propose(ActionProposal("after-failure", EffectClass.SIMULATION_ONLY,
+                                     "MOVE_ENTITY", "vera", Position3(9, 1, 0)))
+    with pytest.raises(ValueError, match="expected_seal"):
+        s.save(candidate, expected_seal="f" * 64)
+    saved = s.save(candidate, expected_seal=first.seal)
+    assert saved.sequence == 2
+
+
+def test_lock_sidecar_symlink_rejected_if_platform_supports_it(tmp_path):
+    external = tmp_path / "outside"
+    external.write_text("external", encoding="utf-8")
+    sidecar = tmp_path / "checkpoint.sealed.json.lock"
+    try:
+        sidecar.symlink_to(external)
+    except (OSError, NotImplementedError):
+        pytest.skip("filesystem symlinks unavailable")
+    with pytest.raises(ValueError, match="symlink"):
+        store(tmp_path).save(world())
+    assert external.read_text(encoding="utf-8") == "external"

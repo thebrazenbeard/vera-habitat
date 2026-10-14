@@ -6,12 +6,14 @@ Vera's identity/memory. HMAC verifies a holder of a shared local secret wrote
 the bytes; it does NOT prove source-control currentness, defend against key
 compromise, or prevent rollback to an older correctly authenticated file.
 
-Assumes one trusted writer at a time and a trusted existing directory.
-Expected-seal checks are optimistic, NOT cross-process atomic transactions.
+Uses an advisory per-file OS lock around explicit saves by cooperating
+local processes. The trusted directory and OS are required; this is NOT a
+distributed lock, hostile-process sandbox, or anti-rollback mechanism.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 import hashlib
 import hmac
 import json
@@ -19,6 +21,7 @@ import os
 from pathlib import Path
 import tempfile
 
+from ._file_lock import exclusive_checkpoint_lock as _exclusive_checkpoint_lock
 from .checkpoint import _object_pairs_no_duplicates
 from .runtime import HabitatRuntime
 
@@ -53,11 +56,17 @@ class StoredCheckpoint:
 class AuthenticatedFileStore:
     """Single-writer, opt-in local JSON store for the *simulation* world only."""
 
-    def __init__(self, path: str | Path, key: bytes, *, writer_id: str):
+    def __init__(self, path: str | Path, key: bytes, *, writer_id: str,
+                 lock_timeout_seconds: float = 2.0):
         if not isinstance(path, (str, Path)) or not str(path):
             raise ValueError("checkpoint path required")
         if type(key) is not bytes or len(key) < 32:
             raise ValueError("HMAC key must be at least 32 bytes")
+        if (type(lock_timeout_seconds) not in (int, float)
+                or not math.isfinite(lock_timeout_seconds)
+                or not 0 <= lock_timeout_seconds <= 30):
+            raise ValueError("lock_timeout_seconds must be finite in [0, 30]")
+        self._lock_timeout_seconds = float(lock_timeout_seconds)
         self._path = Path(path)
         self._key = key
         self._writer_id = _nonblank(writer_id, "writer_id")
@@ -112,11 +121,22 @@ class AuthenticatedFileStore:
         return StoredCheckpoint(runtime, mac, sequence, parent, writer_id)
 
     def save(self, world: HabitatRuntime, *, expected_seal: str | None = None) -> StoredCheckpoint:
-        """Save atomically (single file) with optimistic predecessor checking.
+        """Serialize cooperating local writers around the full check-and-save.
+
+        Creates a permanent sidecar `.lock` on first explicit save. Advisory
+        locks protect cooperating local processes only, not hostile writers or
+        network filesystems. A timed-out lock raises TimeoutError.
+        """
+        with _exclusive_checkpoint_lock(self._path, self._lock_timeout_seconds):
+            return self._save_unlocked(world, expected_seal=expected_seal)
+
+    def _save_unlocked(self, world: HabitatRuntime, *, expected_seal: str | None = None) -> StoredCheckpoint:
+        """Save atomically (single file) after lock acquisition.
 
         This is a local file operation and must be explicitly invoked.
-        The caller is responsible for securing the key, trusted directory,
-        cross-process write exclusion, backups, and anti-rollback anchoring.
+        The caller is responsible for securing the key and trusted directory,
+        coordinating noncooperating/distributed writers, backups and any
+        independently trusted anti-rollback anchoring.
         """
         if not isinstance(world, HabitatRuntime):
             raise ValueError("save requires a HabitatRuntime")
