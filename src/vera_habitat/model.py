@@ -9,6 +9,8 @@ from uuid import uuid4
 
 
 def _nonempty(value: str, field_name: str) -> str:
+    if type(value) is not str:
+        raise ValueError(f"{field_name} must be text")
     value = value.strip()
     if not value:
         raise ValueError(f"{field_name} must not be empty")
