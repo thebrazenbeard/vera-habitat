@@ -71,6 +71,17 @@ stale predecessor seal. The lock does **not** solve trusted anti-rollback,
 distributed/NAS concurrency, or hostile file tampering. See the
 [recovery threat model](docs/LOCAL_AUTHENTICATED_RECOVERY_V1.md).
 
+## V0.3.2 candidate: optional external anti-rollback anchor
+
+An explicit `TrustedAnchor` protocol can guard opt-in local checkpoint
+loads and saves against stale sealed files **only when supplied with a real,
+independently protected monotonic compare-and-swap authority**. No anchor
+provider, network connection, key, service, or external effect is installed.
+The default unanchored store retains its previous rollback limitations.
+A file-write failure after a successful high-water advance fails recovery
+closed until separately governed reconciliation. See
+[anchored recovery](docs/TRUSTED_ANTI_ROLLBACK_V1.md).
+
 ## Quick start
 
 ```bash
