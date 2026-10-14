@@ -372,4 +372,3 @@ def make_zigzag_scenario(seed: int) -> Scenario:
         Obstacle2("upper_barrier", x2, upper_bottom, x2 + .8, 10.0),
     )
     return Scenario(seed=seed, obstacles=boxes)
-
