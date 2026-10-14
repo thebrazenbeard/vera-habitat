@@ -57,7 +57,7 @@ def test_random_action_sequences_match_internal_shadow_oracle():
 def test_physica_candidate_false_negative_fails_closed(monkeypatch):
     ground = world(backend="physica")
     before = ground.observe()
-    monkeypatch.setattr(ground._physica_candidates, "_pairs", lambda items: ())
+    monkeypatch.setattr(ground._physica_candidates, "_swept_pairs", lambda items, displacements: ())
     with pytest.raises(RuntimeError, match="missed"):
         ground.step(TrainingAction("MOVE", 1.0, 0.0, 1000))
     assert ground.observe() == before
@@ -68,8 +68,8 @@ def test_candidate_false_positive_does_not_override_habitat_narrow_check(monkeyp
     ground = world(backend="physica")
     motion = ground._physica_candidates._motion_id
     monkeypatch.setattr(
-        ground._physica_candidates, "_pairs",
-        lambda items: ((motion, "wall"),),
+        ground._physica_candidates, "_swept_pairs",
+        lambda items, displacements: ((motion, "wall"),),
     )
     step = ground.step(TrainingAction("MOVE", -1.0, 0.0, 500))
     assert step.accepted and step.disposition == "SIMULATION_MOVE_APPLIED"
@@ -93,7 +93,41 @@ def test_invalid_backend_rejected_and_default_requires_no_optin():
 def test_broadphase_malformed_pair_fails_before_world_mutation(monkeypatch):
     ground = world(backend="physica")
     before = ground.observe()
-    monkeypatch.setattr(ground._physica_candidates, "_pairs", lambda items: ((1,),))
+    monkeypatch.setattr(ground._physica_candidates, "_swept_pairs", lambda items, displacements: ((1,),))
     with pytest.raises(RuntimeError, match="malformed"):
         ground.step(TrainingAction("MOVE", 1.0, 0.0, 1000))
     assert ground.observe() == before
+
+
+def test_physica_swept_api_receives_start_bounds_and_delta(monkeypatch):
+    ground = world(backend="physica")
+    provider = ground._physica_candidates
+    original = provider._swept_pairs
+    calls = []
+
+    def capture(boxes, deltas):
+        calls.append((boxes, deltas))
+        return original(boxes, deltas)
+
+    monkeypatch.setattr(provider, "_swept_pairs", capture)
+    result = ground.step(TrainingAction("MOVE", 1.0, 0.0, 1000))
+    assert result.disposition == "OBSTACLE_CANDIDATE_REJECTED"
+    assert len(calls) == 1
+    boxes, deltas = calls[0]
+    motion = next(b for b in boxes if b.id == provider._motion_id)
+    assert motion.lower == (2.8, 2.8)
+    assert motion.upper == (3.2, 3.2)
+    assert deltas == {"wall": (0.0, 0.0), provider._motion_id: (1.0, 0.0)}
+
+
+def test_outdated_physica_provider_rejected_without_static_fallback(monkeypatch):
+    from vera_habitat import physica_adapter
+
+    class OldSpatial:
+        AABB = spatial.AABB
+        broad_phase_pairs = staticmethod(spatial.broad_phase_pairs)
+
+    monkeypatch.setattr(physica_adapter, "import_module", lambda name: OldSpatial)
+    assert world().collision_backend == "habitat"
+    with pytest.raises(ImportError, match="swept_broad_phase_pairs"):
+        world(backend="physica")

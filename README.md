@@ -92,7 +92,7 @@ See [evaluation bundle](docs/EVALUATION_BUNDLE_V1.md).
 
 ## Optional Physica shadow broad-phase
 
-Habitat can explicitly use Physica's deterministic 2D AABB candidate sweep in
+Habitat can explicitly use Physica's deterministic swept-envelope 2D AABB candidate sweep in
 `NeutralTrainingGround(collision_backend="physica")`. The ordinary backend is
 unchanged. The Physica adapter checks its candidates against Habitat's
 independent swept collision logic and fails closed on missing candidates.
