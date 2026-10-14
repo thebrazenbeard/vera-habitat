@@ -25,7 +25,9 @@ class PhysicaCandidates:
                 "Physica backend requires a separately installed physica.spatial"
             ) from exc
         self._AABB = spatial.AABB
-        self._pairs = spatial.broad_phase_pairs
+        self._swept_pairs = getattr(spatial, "swept_broad_phase_pairs", None)
+        if not callable(self._swept_pairs):
+            raise ImportError("Physica swept backend requires swept_broad_phase_pairs")
         ids = {b.entity_id for b in obstacles}
         motion_id = "__habitat_motion__"
         while motion_id in ids:
@@ -45,14 +47,15 @@ class PhysicaCandidates:
                 or any(type(v) not in (float, int) or not isfinite(v)
                        for v in (*start, *end))):
             raise ValueError("invalid swept motion envelope")
+        # Pass the actual start box plus displacement; Physica owns the sweep.
         motion = self._AABB(
             self._motion_id,
-            (min(start[0], end[0]) - radius,
-             min(start[1], end[1]) - radius),
-            (max(start[0], end[0]) + radius,
-             max(start[1], end[1]) + radius),
+            (start[0] - radius, start[1] - radius),
+            (start[0] + radius, start[1] + radius),
         )
-        pairs = self._pairs((*self._boxes, motion))
+        deltas = {box.id: (0.0, 0.0) for box in self._boxes}
+        deltas[self._motion_id] = (end[0] - start[0], end[1] - start[1])
+        pairs = self._swept_pairs((*self._boxes, motion), deltas)
         candidates = set()
         for pair in pairs:
             if type(pair) is not tuple or len(pair) != 2:
