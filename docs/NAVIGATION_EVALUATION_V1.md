@@ -2,8 +2,8 @@
 
 **Status:** experimental, deterministic, simulation-only. No ARK gameplay,
 no trained Vera policy, no native Vera runtime binding, no external effects.
-This contribution is stacked on `feat/neutral-training-ground` (Draft PR #7),
-not merged into Habitat `main`.
+This source was integrated into Habitat `main` by PR #15. It remains
+simulation-only; integration does not qualify ARK gameplay or live Vera use.
 
 ## Run
 
