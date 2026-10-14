@@ -19,4 +19,4 @@ __all__ = [
     "render_scene_json", "preview_trajectory_moves",
 ]
 
-__version__ = "0.3.3"
+__version__ = "0.3.5"
