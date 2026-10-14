@@ -90,6 +90,15 @@ SHA-256 report fingerprint and can be replay-checked with
 unchanged. Same-code replay is **not** authentication or independent evidence.
 See [evaluation bundle](docs/EVALUATION_BUNDLE_V1.md).
 
+## Optional Physica shadow broad-phase
+
+Habitat can explicitly use Physica's deterministic 2D AABB candidate sweep in
+`NeutralTrainingGround(collision_backend="physica")`. The ordinary backend is
+unchanged. The Physica adapter checks its candidates against Habitat's
+independent swept collision logic and fails closed on missing candidates.
+A separate pinned-source CI job tests this opt-in integration; it is **not**
+full physics or contact certification. See [Physica integration](docs/PHYSICA_BRIDGE_V1.md).
+
 ## Quick start
 
 ```bash

@@ -139,6 +139,7 @@ class NeutralTrainingGround:
         start: tuple[float, float] = (1.0, 1.0),
         goal: tuple[float, float] = (9.0, 9.0),
         obstacles: Sequence[Obstacle2] = (Obstacle2("wall", 4.0, 0.0, 6.0, 7.0),),
+        collision_backend: str = "habitat",
     ) -> None:
         self.width_m = _real(width_m, "width_m")
         self.height_m = _real(height_m, "height_m")
@@ -177,6 +178,14 @@ class NeutralTrainingGround:
                 raise ValueError("avatar spawns inside obstacle margin")
             if _swept_aabb_hit(self._goal, self._goal, box, self.goal_radius_m):
                 raise ValueError("goal overlaps obstacle margin")
+        if type(collision_backend) is not str or collision_backend not in ("habitat", "physica"):
+            raise ValueError("collision_backend must be habitat or physica")
+        self.collision_backend = collision_backend
+        self._physica_candidates = None
+        if collision_backend == "physica":
+            # Explicit opt-in: never import or install Physica by default.
+            from .physica_adapter import PhysicaCandidates
+            self._physica_candidates = PhysicaCandidates(self._obstacles)
         self._runtime = HabitatRuntime()
         self._runtime.spawn(Entity(self.AVATAR_ID, "AVATAR", self.ZONE,
                                    Position3(*self._start, 0.0)))
@@ -212,6 +221,19 @@ class NeutralTrainingGround:
             count, self._reached_goal, self._reached_goal or count >= self.max_steps,
         )
 
+    def _obstacle_collision(self, start: tuple[float, float], end: tuple[float, float]) -> bool:
+        if self._physica_candidates is None:
+            return any(_swept_aabb_hit(start, end, b, self.radius_m)
+                       for b in self._obstacles)
+        candidates = self._physica_candidates.candidates(start, end, self.radius_m)
+        # Shadow-check against Habitat's independent narrow swept-AABB test.
+        # This deliberately spends extra work to catch provider false negatives.
+        hits = {box.entity_id for box in self._obstacles
+                if _swept_aabb_hit(start, end, box, self.radius_m)}
+        if not hits.issubset(candidates):
+            raise RuntimeError("Physica broad-phase missed Habitat collision candidate")
+        return bool(hits)
+
     def step(self, action: TrainingAction) -> TrainingStep:
         if not isinstance(action, TrainingAction):
             raise TypeError("expected TrainingAction")
@@ -232,7 +254,7 @@ class NeutralTrainingGround:
                 disposition, accepted = "PREDICTION_NONFINITE_REJECTED", False
             elif not self._within(end, self.radius_m):
                 disposition, accepted = "BOUNDARY_CANDIDATE_REJECTED", False
-            elif any(_swept_aabb_hit(old, end, b, self.radius_m) for b in self._obstacles):
+            elif self._obstacle_collision(old, end):
                 disposition, accepted = "OBSTACLE_CANDIDATE_REJECTED", False
             else:
                 proposal = ActionProposal(
