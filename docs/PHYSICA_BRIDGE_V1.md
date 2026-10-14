@@ -1,16 +1,19 @@
 # Physica candidate integration — V1 (2026-10-14)
 
-**Source bindings:** Habitat parent `b39d4924ffd7127e44da5d4e8ec368ccb799386d`;
-Physica public `main` `bdb135c680a12101d7a191c71fb7c7d72ab9e04b`.
-The previous Physica swept-candidate PR #5 is closed and its code is
-**not** on current Physica `main`; no speculative API was invoked.
+**Source bindings:** Habitat parent `f8ffb7dfbaef2e268e3a5e0b4f719956480625e1`;
+Physica merged `main` `9cc1ae9c04f728c10d6bdd9f3b277083eb46a834` (PR #6). The
+previous closed Physica PR #5 did not land. This adapter requires the actual
+`swept_broad_phase_pairs` API from the newly verified revision.
 
 `NeutralTrainingGround(collision_backend="habitat")` remains the default.
 Opting into `collision_backend="physica"` imports `physica.spatial` only
 at explicit constructor call and raises if unavailable (never silently falls
 back). It converts each static obstacle to Physica `AABB`, and each
-candidate motion to a conservative swept **envelope AABB**. It queries
-Physica's `broad_phase_pairs` and selects the motion's obstacle candidates.
+candidate motion to an initial radius-expanded AABB and exact displacement
+map (zero vectors for static obstacles). It queries Physica's
+`swept_broad_phase_pairs` and selects the motion's obstacle candidates. The
+opt-in backend rejects an outdated provider rather than falling back to
+a static query.
 
 Habitat's unchanged swept inflated-AABB slab test is then applied
 independently to all obstacles. If Physica misses any Habitat collision
@@ -24,7 +27,7 @@ integration testing and checks that it can actually import. Normal Habitat
 dependencies remain unchanged; test skips without Physica remain explicit.
 Local opt-in testers may install the same trusted pinned source separately.
 
-Physica currently has no top-level license file in the inspected tree;
+Physica had no top-level license file in the inspected source tree;
 this change **does not copy its code** or package it with Habitat.
 A verified licensing policy is still needed before distributing combined
 binary/application artifacts, particularly across distinct projects.
