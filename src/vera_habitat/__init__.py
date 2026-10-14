@@ -1,5 +1,6 @@
 from .model import ActionProposal, ActionReceipt, EffectClass, Entity, Position3, SceneSnapshot
 from .runtime import HabitatRuntime
+from .anchor import AnchorHead, TrustedAnchor
 from .persistence import AuthenticatedFileStore, StoredCheckpoint
 from .spatial import AABB3, SpatialProjection, brute_force_candidates
 from .rendering import render_scene_json
@@ -10,7 +11,7 @@ __all__ = [
     "ActionReceipt",
     "EffectClass",
     "Entity",
-    "HabitatRuntime",
+    "HabitatRuntime", "AnchorHead", "TrustedAnchor",
     "Position3",
     "SceneSnapshot",
     "AuthenticatedFileStore", "StoredCheckpoint",
@@ -18,4 +19,4 @@ __all__ = [
     "render_scene_json", "preview_trajectory_moves",
 ]
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
