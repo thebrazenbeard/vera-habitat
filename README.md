@@ -82,6 +82,14 @@ A file-write failure after a successful high-water advance fails recovery
 closed until separately governed reconciliation. See
 [anchored recovery](docs/TRUSTED_ANTI_ROLLBACK_V1.md).
 
+## V0.3.3 candidate: replay-verifiable navigation evaluation
+
+The optional `navigation_eval --bundle` output has a deterministic public
+SHA-256 report fingerprint and can be replay-checked with
+`vera_habitat.eval_bundle.verify_evaluation_bundle`. Default CLI output is
+unchanged. Same-code replay is **not** authentication or independent evidence.
+See [evaluation bundle](docs/EVALUATION_BUNDLE_V1.md).
+
 ## Quick start
 
 ```bash
