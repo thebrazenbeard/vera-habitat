@@ -22,3 +22,17 @@ jobs:
       - run: pytest
       - run: python -m compileall -q src tests
       - run: python -m vera_habitat.demo
+
+  physica-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]"
+      # Pin the actual public Physica source revision; never install a moving branch.
+      - run: python -m pip install --no-deps "git+https://github.com/thebrazenbeard/physica.git@bdb135c680a12101d7a191c71fb7c7d72ab9e04b"
+      - run: python -c "from physica.spatial import AABB, broad_phase_pairs; assert callable(broad_phase_pairs)"
+      - run: python -m pytest -q tests/test_training_ground_physica.py tests/test_physica_backend.py
+      - run: python -m compileall -q src tests
