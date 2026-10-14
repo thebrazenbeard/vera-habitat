@@ -94,8 +94,9 @@ checkpoint cannot be authenticated with a new key.
 
 1. An attacker who can restore a *previously valid signed file* can perform a
    rollback. The parent MAC and sequence do **not** prevent this without an
-   independently trusted monotonic high-water mark. Such an external anchor
-   does not exist in this package.
+   independently trusted monotonic high-water mark. V0.3.2 defines an optional
+   caller-supplied anchor *interface*; no independently trusted provider is
+   bundled or deployed. See [trusted anchor contract](TRUSTED_ANTI_ROLLBACK_V1.md).
 2. The lock prevents the check/replace race for **cooperating processes on
    the same locally supported filesystem and stable sidecar path**; this is
    not a distributed or network-filesystem compare-and-swap and does not
