@@ -69,7 +69,7 @@ class TestClearing(unittest.TestCase):
     def test_unknown_entity_fails_without_side_effect(self):
         world = make_clearing()
         before = world.export_checkpoint()
-        with self.assertRaises(StopIteration):
+        with self.assertRaisesRegex(ValueError, "unknown Clearing entity"):
             run_prediction_trial(
                 world, action_id="unknown", entity_id="missing",
                 target=Position3(1, 1, 0), predicted=Position3(1, 1, 0),
