@@ -59,8 +59,10 @@ def make_clearing() -> HabitatRuntime:
 
 
 def _position(world: HabitatRuntime, identifier: str) -> Position3:
-    return next(entity.position for entity in world.snapshot().entities
-                if entity.entity_id == identifier)
+    for entity in world.snapshot().entities:
+        if entity.entity_id == identifier:
+            return entity.position
+    raise ValueError(f"unknown Clearing entity: {identifier}")
 
 
 def run_prediction_trial(
