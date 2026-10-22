@@ -21,6 +21,7 @@ import os
 from pathlib import Path
 import tempfile
 
+from .anchor import AnchorHead, TrustedAnchor
 from ._file_lock import exclusive_checkpoint_lock as _exclusive_checkpoint_lock
 from .checkpoint import _object_pairs_no_duplicates
 from .runtime import HabitatRuntime
@@ -57,7 +58,9 @@ class AuthenticatedFileStore:
     """Single-writer, opt-in local JSON store for the *simulation* world only."""
 
     def __init__(self, path: str | Path, key: bytes, *, writer_id: str,
-                 lock_timeout_seconds: float = 2.0):
+                 lock_timeout_seconds: float = 2.0,
+                 anchor: TrustedAnchor | None = None,
+                 anchor_id: str | None = None):
         if not isinstance(path, (str, Path)) or not str(path):
             raise ValueError("checkpoint path required")
         if type(key) is not bytes or len(key) < 32:
@@ -66,6 +69,17 @@ class AuthenticatedFileStore:
                 or not math.isfinite(lock_timeout_seconds)
                 or not 0 <= lock_timeout_seconds <= 30):
             raise ValueError("lock_timeout_seconds must be finite in [0, 30]")
+        if anchor is not None:
+            if (type(anchor_id) is not str or not anchor_id.strip()
+                    or len(anchor_id) > 128):
+                raise ValueError("anchor_id is required for an external anchor")
+            if (not callable(getattr(anchor, "read_head", None))
+                    or not callable(getattr(anchor, "compare_and_advance", None))):
+                raise ValueError("anchor must implement the trusted CAS contract")
+        elif anchor_id is not None:
+            raise ValueError("anchor_id requires an external anchor")
+        self._anchor = anchor
+        self._anchor_id = anchor_id
         self._lock_timeout_seconds = float(lock_timeout_seconds)
         self._path = Path(path)
         self._key = key
@@ -80,6 +94,15 @@ class AuthenticatedFileStore:
         if len(data) > MAX_FILE_BYTES:
             raise ValueError("authenticated checkpoint exceeds file budget")
         return data
+
+    def _current_anchor(self) -> AnchorHead | None:
+        """Read through the caller-supplied authority without local fallback."""
+        assert self._anchor is not None
+        head = self._anchor.read_head()
+        if (head is not None and
+                (type(head) is not AnchorHead or head.anchor_id != self._anchor_id)):
+            raise ValueError("invalid trusted anchor head")
+        return head
 
     def load(self) -> StoredCheckpoint:
         """Authenticate and load only; never create or bind a runtime service."""
@@ -118,6 +141,10 @@ class AuthenticatedFileStore:
             raise ValueError("checkpoint authentication failed")
         # Only deserialize/reconstruct AFTER verifying the keyed MAC.
         runtime = HabitatRuntime.from_checkpoint(object_value["checkpoint"])
+        if self._anchor is not None:
+            required = AnchorHead(self._anchor_id, sequence, mac)
+            if self._current_anchor() != required:
+                raise ValueError("trusted anchor disagrees with checkpoint; possible rollback")
         return StoredCheckpoint(runtime, mac, sequence, parent, writer_id)
 
     def save(self, world: HabitatRuntime, *, expected_seal: str | None = None) -> StoredCheckpoint:
@@ -151,6 +178,8 @@ class AuthenticatedFileStore:
         except FileNotFoundError:
             existing = None
         predecessor = existing.seal if existing else None
+        if existing is None and self._anchor is not None and self._current_anchor() is not None:
+            raise ValueError("trusted anchor has a head but checkpoint is absent")
         if expected_seal != predecessor:
             raise ValueError("expected_seal does not match current authenticated file")
         if existing and existing.writer_id != self._writer_id:
@@ -189,7 +218,16 @@ class AuthenticatedFileStore:
                 output.write(payload)
                 output.flush()
                 os.fsync(output.fileno())
-            # Replace the target only after the new file is fully written.
+            # Commit the independently trusted high-water mark BEFORE exposing
+            # new local data: a crash may leave the file stale, but never
+            # makes a stale generation pass an anchored load.
+            if self._anchor is not None:
+                previous_head = (AnchorHead(self._anchor_id, existing.sequence, existing.seal)
+                                 if existing else None)
+                next_head = AnchorHead(self._anchor_id, unsigned["sequence"], mac)
+                if self._anchor.compare_and_advance(previous_head, next_head) is not True:
+                    raise ValueError("trusted anchor CAS conflict; checkpoint unchanged")
+            # Replace the target only after staging and (when enabled) anchor CAS.
             os.replace(tmp, self._path)
             tmp = None
         finally:
