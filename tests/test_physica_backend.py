@@ -33,6 +33,29 @@ def test_actual_physica_broadphase_rejects_swept_wall_and_preserves_receipts():
     assert physical.observe().avatar == normal.observe().avatar
 
 
+def test_physica_remains_conservative_at_rounded_swept_touch():
+    """Habitat's rounded margin touch must remain a Physica candidate.
+
+    For these ordinary binary64 inputs, exact addition of the rounded
+    displacement to Physica's rounded start box undershoots wall.left,
+    while Habitat's independent inflated-obstacle slab oracle includes it.
+    """
+    kwargs = dict(
+        start=(0.2, 3.0), goal=(9.0, 9.0), width_m=10.0,
+        height_m=10.0, speed_mps=0.5, radius_m=0.2,
+        obstacles=(Obstacle2("wall", 0.9, 2.0, 1.5, 4.0),),
+    )
+    action = TrainingAction("MOVE", 1.0, 0.0, 1000)
+    normal = NeutralTrainingGround(**kwargs)
+    physical = NeutralTrainingGround(**kwargs, collision_backend="physica")
+    baseline = normal.step(action)
+    assert baseline.disposition == "OBSTACLE_CANDIDATE_REJECTED"
+    shadow = physical.step(action)
+    assert shadow.disposition == baseline.disposition
+    assert shadow.accepted is False
+    assert physical.observe() == normal.observe()
+
+
 def test_random_action_sequences_match_internal_shadow_oracle():
     for seed in range(12):
         rng = Random(seed + 214)
@@ -115,8 +138,15 @@ def test_physica_swept_api_receives_start_bounds_and_delta(monkeypatch):
     assert len(calls) == 1
     boxes, deltas = calls[0]
     motion = next(b for b in boxes if b.id == provider._motion_id)
-    assert motion.lower == (2.8, 2.8)
-    assert motion.upper == (3.2, 3.2)
+    static_wall = next(b for b in boxes if b.id == "wall")
+    assert static_wall.lower == (4.0, 2.0)
+    assert static_wall.upper == (6.0, 7.0)
+    # Preserve the swept motion interface, with outward-rounded safety
+    # margins needed to encompass Habitat's finite-precision slab oracle.
+    assert motion.lower[0] < 2.8
+    assert motion.lower[1] < 2.8
+    assert motion.upper[0] > 3.2
+    assert motion.upper[1] > 3.2
     assert deltas == {"wall": (0.0, 0.0), provider._motion_id: (1.0, 0.0)}
 
 

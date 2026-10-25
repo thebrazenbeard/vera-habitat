@@ -6,9 +6,16 @@ simulation-scoped position proposals requiring separate Habitat acceptance.
 """
 from __future__ import annotations
 
+from itertools import islice
 from math import isfinite
 
 from .model import ActionProposal, EffectClass, Position3
+
+
+# The public trajectory protocol may be backed by streaming iterables. A
+# preview must bound *consumption* before trying to materialize them.
+MAX_STATE_DIM = 1024
+MAX_STATE_VALUES = 1_000_000
 
 
 def preview_trajectory_moves(
@@ -30,11 +37,26 @@ def preview_trajectory_moves(
     if any(type(v) not in (float, int) or not isfinite(v) for v in (y, z)):
         raise ValueError("projection y,z must be finite real coordinates")
     try:
-        times = tuple(trajectory.times)
-        states = tuple(tuple(s) for s in trajectory.states)
+        times = tuple(islice(trajectory.times, max_moves + 2))
     except (AttributeError, TypeError) as exc:
         raise ValueError("trajectory needs finite times and state vectors") from exc
-    if not 2 <= len(times) == len(states) <= max_moves + 1:
+    if not 2 <= len(times) <= max_moves + 1:
+        raise ValueError("trajectory exceeds configured candidate budget")
+    try:
+        state_source = trajectory.states
+        states = []
+        total_values = 0
+        for row in islice(state_source, max_moves + 2):
+            state = tuple(islice(row, MAX_STATE_DIM + 1))
+            if len(state) > MAX_STATE_DIM:
+                raise ValueError("trajectory state dimension exceeds budget")
+            total_values += len(state)
+            if total_values > MAX_STATE_VALUES:
+                raise ValueError("trajectory state value budget exceeded")
+            states.append(state)
+    except (AttributeError, TypeError) as exc:
+        raise ValueError("trajectory needs finite times and state vectors") from exc
+    if len(states) != len(times) or len(states) > max_moves + 1:
         raise ValueError("trajectory exceeds configured candidate budget")
     if any(type(t) not in (float, int) or not isfinite(t) for t in times):
         raise ValueError("trajectory times must be finite numeric values")
