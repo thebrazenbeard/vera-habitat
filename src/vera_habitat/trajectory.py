@@ -16,6 +16,18 @@ from .model import ActionProposal, EffectClass, Position3
 # preview must bound *consumption* before trying to materialize them.
 MAX_STATE_DIM = 1024
 MAX_STATE_VALUES = 1_000_000
+MAX_ACTION_ID_CHARS = 1_000_000
+
+
+def _finite_real(value: object) -> bool:
+    if type(value) not in (float, int):
+        return False
+    try:
+        return isfinite(value)
+    except OverflowError:
+        # Arbitrarily large Python integers are not representable as finite
+        # float coordinates/timestamps, though their exact type is numeric.
+        return False
 
 
 def preview_trajectory_moves(
@@ -34,7 +46,7 @@ def preview_trajectory_moves(
         raise ValueError("action_prefix must be a nonblank string")
     if type(max_moves) is not int or not 1 <= max_moves <= 10_000:
         raise ValueError("max_moves must be in [1, 10000]")
-    if any(type(v) not in (float, int) or not isfinite(v) for v in (y, z)):
+    if any(not _finite_real(v) for v in (y, z)):
         raise ValueError("projection y,z must be finite real coordinates")
     try:
         times = tuple(islice(trajectory.times, max_moves + 2))
@@ -58,16 +70,23 @@ def preview_trajectory_moves(
         raise ValueError("trajectory needs finite times and state vectors") from exc
     if len(states) != len(times) or len(states) > max_moves + 1:
         raise ValueError("trajectory exceeds configured candidate budget")
-    if any(type(t) not in (float, int) or not isfinite(t) for t in times):
+    if any(not _finite_real(t) for t in times):
         raise ValueError("trajectory times must be finite numeric values")
     if any(b <= a for a, b in zip(times, times[1:])):
         raise ValueError("trajectory times must strictly increase")
     dim = len(states[0])
     if dim < 1 or any(len(s) != dim for s in states):
         raise ValueError("trajectory states must have fixed positive dimension")
-    if any(type(v) not in (float, int) or not isfinite(v)
-           for state in states for v in state):
+    if any(not _finite_real(v) for state in states for v in state):
         raise ValueError("trajectory states must be finite numeric values")
+    # Every generated action ID repeats action_prefix. Limit the combined
+    # output length before building any proposal, while retaining long
+    # prefixes for genuinely small previews.
+    moves = len(states) - 1
+    identifier_chars = moves * (len(action_prefix) + 1)
+    identifier_chars += sum(len(str(index)) for index in range(1, moves + 1))
+    if identifier_chars > MAX_ACTION_ID_CHARS:
+        raise ValueError("trajectory action identifier budget exceeded")
     return tuple(
         ActionProposal(
             action_id=f"{action_prefix}:{index}",

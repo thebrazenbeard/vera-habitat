@@ -40,7 +40,11 @@ loop, hardware actuator, or background service was installed.
   monotonic samples and enforces a candidate budget **while reading external
   iterables**: at most `max_moves + 2` samples are read before rejection,
   each state row is limited to 1,024 values, and the entire preview to
-  1,000,000 state values. These limits prevent accidental unbounded
+  1,000,000 state values. Before proposals are created, the sum of all
+  generated action-ID lengths is capped at 1,000,000 characters, preventing
+  a large caller-provided prefix from being multiplied by every move.
+  Huge integers that cannot represent finite coordinates or timestamps
+  are rejected with `ValueError`. These limits prevent accidental unbounded
   materialization; Python iterator callbacks are not a security sandbox.
   It produces
   **simulation-only proposals without submitting any of them**.
