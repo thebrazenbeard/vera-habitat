@@ -37,7 +37,12 @@ loop, hardware actuator, or background service was installed.
   `authority:READ_ONLY_PROJECTION`. Editing the JSON cannot mutate the world.
 - **Numerical trajectory preview:** `preview_trajectory_moves` uses the
   `times`/`states` interface of Physica `Trajectory`, validates finite
-  monotonic samples and enforces a candidate budget. It produces
+  monotonic samples and enforces a candidate budget **while reading external
+  iterables**: at most `max_moves + 2` samples are read before rejection,
+  each state row is limited to 1,024 values, and the entire preview to
+  1,000,000 state values. These limits prevent accidental unbounded
+  materialization; Python iterator callbacks are not a security sandbox.
+  It produces
   **simulation-only proposals without submitting any of them**.
   Explicit `HabitatRuntime.propose` still applies the authority gate.
 - **No asserted memory/identity:** a scene avatar, receipt, restore or renderer
