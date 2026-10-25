@@ -46,6 +46,26 @@ def _layout_audit(*, family: str, seeds: Sequence[int]) -> dict:
     }
 
 
+def build_layout_audit(*, split: str, family: str, episodes: int) -> dict:
+    """Opt-in geometry audit, separate from replay-stable V1 evaluations.
+
+    Historical evaluation reports and sealed bundles must not silently gain
+    fields under the same V1 schema identifier.
+    """
+    if split not in ("train", "holdout") or family not in ("barrier", "zigzag"):
+        raise ValueError("unsupported audit family or split")
+    pool = TRAIN_SEEDS if split == "train" else HOLDOUT_SEEDS
+    if type(episodes) is not int or not 1 <= episodes <= len(pool):
+        raise ValueError("invalid audit episode count")
+    return {
+        "schema_version": "VERA_HABITAT_NAV_LAYOUT_AUDIT_V1",
+        "split": split,
+        "family": family,
+        "seeds": list(pool[:episodes]),
+        **_layout_audit(family=family, seeds=pool[:episodes]),
+    }
+
+
 def build_evaluation_report(*, split: str, family: str, episodes: int,
                             max_steps: int, sensor_range_m: float,
                             policies: Sequence[str]) -> dict:
@@ -75,7 +95,6 @@ def build_evaluation_report(*, split: str, family: str, episodes: int,
         "sensor_range_m": sensor_range_m,
         "seeds": list(pool[:episodes]),
         "baselines": [asdict(result) for result in results],
-        "layout_audit": _layout_audit(family=family, seeds=pool[:episodes]),
         "limitations": [
             "simulated_world_not_ARK",
             "goal_offset_and_avatar_pose_are_synthetic_observations",
@@ -83,7 +102,6 @@ def build_evaluation_report(*, split: str, family: str, episodes: int,
             "grid_reference_efficiency_is_not_Habitat_SPL",
             "reward_is_not_learning_proof",
             "holdout_seeds_share_generator_family_with_training",
-            "holdout_seeds_may_reuse_training_layouts",
             "sensor_range_is_local_square_visibility_not_occlusion",
             "no_native_Vera_runtime_or_hardware_actuation",
         ],
@@ -106,6 +124,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                         default=["random", "greedy", "oracle"])
     parser.add_argument("--bundle", action="store_true",
                         help="Include a public digest and replay-verifiable payload")
+    parser.add_argument("--layout-audit-only", action="store_true",
+                        help="Print a separate geometry overlap audit without altering V1 reports")
     args = parser.parse_args(argv)
     pool = TRAIN_SEEDS if args.split == "train" else HOLDOUT_SEEDS
     if not 1 <= args.episodes <= len(pool):
@@ -119,6 +139,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         from .eval_bundle import MAX_REPLAY_STEPS
         if args.episodes * args.max_steps * len(args.policies) > MAX_REPLAY_STEPS:
             parser.error("--bundle replay work budget exceeded")
+    if args.layout_audit_only:
+        if args.bundle:
+            parser.error("--layout-audit-only cannot be combined with --bundle")
+        audit = build_layout_audit(
+            split=args.split, family=args.family, episodes=args.episodes,
+        )
+        print(json.dumps(audit, indent=2, sort_keys=True))
+        return 0
     report = build_evaluation_report(
         split=args.split, family=args.family, episodes=args.episodes,
         max_steps=args.max_steps, sensor_range_m=args.sensor_range,
