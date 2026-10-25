@@ -29,10 +29,11 @@ jobs:
       fail-fast: false
       matrix:
         physica_sha:
-          # Preserve the original integration contract and verify the later
-          # reviewed Physica main without installing a mutable branch.
+          # Preserve the original integration contract and test each reviewed
+          # Physica integration checkpoint using immutable source revisions.
           - "9cc1ae9c04f728c10d6bdd9f3b277083eb46a834"
           - "8160ed36fb77d4764414f854847447fdc23794d6"
+          - "d3fc07fcb2ca52a406cfaf9e3a3c09a4a66fb3cf"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
