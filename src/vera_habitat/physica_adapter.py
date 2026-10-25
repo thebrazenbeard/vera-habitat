@@ -6,8 +6,9 @@ No code, model, network connection or actuator is copied or installed here.
 """
 from __future__ import annotations
 
+from fractions import Fraction
 from importlib import import_module
-from math import isfinite
+from math import inf, isfinite, nextafter, ulp
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -47,14 +48,44 @@ class PhysicaCandidates:
                 or any(type(v) not in (float, int) or not isfinite(v)
                        for v in (*start, *end))):
             raise ValueError("invalid swept motion envelope")
-        # Pass the actual start box plus displacement; Physica owns the sweep.
+        # Physica now retains exact rational input geometry while Habitat's
+        # independent slab test performs rounded subtract/divide operations.
+        # Near inclusive edge/corner contacts those two representations can
+        # disagree even at ordinary scales. Pad the *candidate* query by a
+        # small scale-relative binary64 error budget; Habitat still makes the
+        # actual rejection decision and detects truly missing candidates.
+        bounds = []
+        for s, e in zip(start, end):
+            guard = 8 * ulp(max(abs(s), abs(e), radius))
+            low, high = s - radius - guard, s + radius + guard
+            if not isfinite(low) or not isfinite(high):
+                raise ValueError("conservative swept bounds must remain finite")
+            bounds.append((nextafter(low, -inf), nextafter(high, inf)))
+
+        # The rounded displacement can stop short of a supplied endpoint
+        # after severe cancellation. Round it outward in the actual travel
+        # direction, using exact comparisons of the finite input floats.
+        motion_delta = []
+        for s, e in zip(start, end):
+            delta = e - s
+            if not isfinite(delta):
+                raise ValueError("swept displacement must remain finite")
+            exact_delta = Fraction(e) - Fraction(s)
+            if e > s and Fraction(delta) < exact_delta:
+                delta = nextafter(delta, inf)
+            elif e < s and Fraction(delta) > exact_delta:
+                delta = nextafter(delta, -inf)
+            if not isfinite(delta):
+                raise ValueError("outward swept displacement must remain finite")
+            motion_delta.append(delta)
+
         motion = self._AABB(
             self._motion_id,
-            (start[0] - radius, start[1] - radius),
-            (start[0] + radius, start[1] + radius),
+            (bounds[0][0], bounds[1][0]),
+            (bounds[0][1], bounds[1][1]),
         )
         deltas = {box.id: (0.0, 0.0) for box in self._boxes}
-        deltas[self._motion_id] = (end[0] - start[0], end[1] - start[1])
+        deltas[self._motion_id] = tuple(motion_delta)
         pairs = self._swept_pairs((*self._boxes, motion), deltas)
         candidates = set()
         for pair in pairs:
