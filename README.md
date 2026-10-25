@@ -90,6 +90,19 @@ SHA-256 report fingerprint and can be replay-checked with
 unchanged. Same-code replay is **not** authentication or independent evidence.
 See [evaluation bundle](docs/EVALUATION_BUNDLE_V1.md).
 
+## Optional navigation layout-overlap audit
+
+The opt-in command below reports repeated synthetic obstacle layouts
+between the seed-disjoint training and holdout sets. It emits a separate
+`VERA_HABITAT_NAV_LAYOUT_AUDIT_V1` diagnostic without modifying ordinary
+navigation evaluation reports or historical sealed V1 bundles. It does not
+demonstrate model generalization or physical prediction validity. See
+[navigation evaluation](docs/NAVIGATION_EVALUATION_V1.md).
+
+```bash
+python -m vera_habitat.navigation_eval --layout-audit-only --split holdout --episodes 20
+```
+
 ## Optional Physica shadow broad-phase
 
 Habitat can explicitly use Physica's deterministic swept-envelope 2D AABB candidate sweep in
