@@ -36,6 +36,11 @@ touch can be missed by the naive Physica envelope even though Habitat would
 reject the simulated move. The opt-in adapter now expands *candidate* bounds
 using a finite scale-relative eight-ULP guard and outward-directed displacement
 rounding; it does not change Habitat's collision decision or authority boundary.
+If the conservative bounds or displacement cannot be represented as finite
+binary64 at extreme input scales, the adapter explicitly yields **all known
+obstacles** as candidates, leaving Habitat's own independent slab test to
+decide. This degrades pruning for that action but avoids rejecting an otherwise
+valid simulated move solely because a candidate envelope overflowed.
 This conservative margin has regression and adversarial test evidence, **not**
 a formal proof covering every finite floating-point input or physically
 validated contact dynamics. Missed candidates still fail closed.

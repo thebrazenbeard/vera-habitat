@@ -8,8 +8,9 @@ the former, even where independently rounded expressions disagree by an ulp.
 These are collision *candidate* checks, not physical contact qualification.
 """
 
-from math import nextafter, inf
+from math import nextafter, inf, ulp
 from random import Random
+from sys import float_info
 
 import pytest
 
@@ -99,3 +100,35 @@ def test_seeded_sweep_shadow_parity_at_binary64_boundaries():
         observed_hits += _swept_aabb_hit(start, end, wall, radius)
         _assert_no_shadow_false_negative(start, end, wall, radius)
     assert observed_hits > 20
+
+
+def test_finite_maximum_motion_uses_conservative_fallback_on_guard_overflow():
+    largest = float_info.max
+    quantum = ulp(largest)
+    # A padding overflow is not an invalid input trajectory. The safe
+    # candidate superset is every obstacle rather than an exception.
+    obstacle = Obstacle2("distant", 0., 0., 1., 2.)
+    candidates = PhysicaCandidates((obstacle,)).candidates(
+        (largest - 4 * quantum, 1.),
+        (largest - 2 * quantum, 1.), .2,
+    )
+    assert candidates == frozenset({"distant"})
+
+
+def test_maxfinite_world_never_diverges_only_from_padding_overflow():
+    largest = float_info.max
+    quantum = ulp(largest)
+    settings = dict(
+        width_m=largest, height_m=10., speed_mps=2 * quantum,
+        radius_m=.2, goal_radius_m=.3,
+        start=(largest - 4 * quantum, 1.), goal=(1., 4.), obstacles=(),
+    )
+    action = TrainingAction("MOVE", 1., 0., 1000)
+    ordinary = NeutralTrainingGround(collision_backend="habitat", **settings)
+    shadow = NeutralTrainingGround(collision_backend="physica", **settings)
+    reference = ordinary.step(action)
+    actual = shadow.step(action)
+    assert reference.accepted is True
+    assert (actual.accepted, actual.disposition, actual.observation) == (
+        reference.accepted, reference.disposition, reference.observation,
+    )

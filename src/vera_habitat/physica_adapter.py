@@ -58,9 +58,16 @@ class PhysicaCandidates:
         for s, e in zip(start, end):
             guard = 8 * ulp(max(abs(s), abs(e), radius))
             low, high = s - radius - guard, s + radius + guard
-            if not isfinite(low) or not isfinite(high):
-                raise ValueError("conservative swept bounds must remain finite")
-            bounds.append((nextafter(low, -inf), nextafter(high, inf)))
+            # A finite Habitat world can approach the edge of binary64. If
+            # outward padding overflows, return every known obstacle as an
+            # unpruned candidate superset. This preserves Habitat's own slab
+            # decision without passing an invalid AABB to Physica.
+            if not isfinite(guard) or not isfinite(low) or not isfinite(high):
+                return self._obstacle_ids
+            padded = (nextafter(low, -inf), nextafter(high, inf))
+            if not all(isfinite(value) for value in padded):
+                return self._obstacle_ids
+            bounds.append(padded)
 
         # The rounded displacement can stop short of a supplied endpoint
         # after severe cancellation. Round it outward in the actual travel
@@ -69,14 +76,14 @@ class PhysicaCandidates:
         for s, e in zip(start, end):
             delta = e - s
             if not isfinite(delta):
-                raise ValueError("swept displacement must remain finite")
+                return self._obstacle_ids
             exact_delta = Fraction(e) - Fraction(s)
             if e > s and Fraction(delta) < exact_delta:
                 delta = nextafter(delta, inf)
             elif e < s and Fraction(delta) > exact_delta:
                 delta = nextafter(delta, -inf)
             if not isfinite(delta):
-                raise ValueError("outward swept displacement must remain finite")
+                return self._obstacle_ids
             motion_delta.append(delta)
 
         motion = self._AABB(
