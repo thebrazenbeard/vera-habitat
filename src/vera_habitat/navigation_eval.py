@@ -9,7 +9,41 @@ from dataclasses import asdict
 import json
 from typing import Sequence
 
-from .navigation import TRAIN_SEEDS, HOLDOUT_SEEDS, evaluate_baselines
+from .navigation import (
+    TRAIN_SEEDS,
+    HOLDOUT_SEEDS,
+    evaluate_baselines,
+    make_scenario,
+    make_zigzag_scenario,
+)
+
+
+def _layout_audit(*, family: str, seeds: Sequence[int]) -> dict:
+    """Count exact synthetic obstacle-layout reuse, not model generalization.
+
+    Training and holdout use distinct seed IDs but finite geometry choices.
+    Compare obstacle bounds rather than seeds so identical worlds are visible.
+    """
+    generate = make_scenario if family == "barrier" else make_zigzag_scenario
+
+    def signature(seed: int) -> tuple:
+        return tuple(
+            (box.left, box.bottom, box.right, box.top)
+            for box in generate(seed).obstacles
+        )
+
+    training = {signature(seed) for seed in TRAIN_SEEDS}
+    evaluated = [signature(seed) for seed in seeds]
+    unique_evaluated = set(evaluated)
+    return {
+        "signature": "obstacle_bounds_v1",
+        "evaluated_unique_layouts": len(unique_evaluated),
+        "train_unique_layouts": len(training),
+        "episodes_reusing_train_layout": sum(
+            layout in training for layout in evaluated
+        ),
+        "unique_layouts_reused_from_train": len(unique_evaluated & training),
+    }
 
 
 def build_evaluation_report(*, split: str, family: str, episodes: int,
@@ -41,6 +75,7 @@ def build_evaluation_report(*, split: str, family: str, episodes: int,
         "sensor_range_m": sensor_range_m,
         "seeds": list(pool[:episodes]),
         "baselines": [asdict(result) for result in results],
+        "layout_audit": _layout_audit(family=family, seeds=pool[:episodes]),
         "limitations": [
             "simulated_world_not_ARK",
             "goal_offset_and_avatar_pose_are_synthetic_observations",
@@ -48,6 +83,7 @@ def build_evaluation_report(*, split: str, family: str, episodes: int,
             "grid_reference_efficiency_is_not_Habitat_SPL",
             "reward_is_not_learning_proof",
             "holdout_seeds_share_generator_family_with_training",
+            "holdout_seeds_may_reuse_training_layouts",
             "sensor_range_is_local_square_visibility_not_occlusion",
             "no_native_Vera_runtime_or_hardware_actuation",
         ],

@@ -21,6 +21,13 @@ The CLI emits deterministic JSON under
 `VERA_HABITAT_NAV_EVALUATION_V1`. Random-policy choices are seeded.
 The same code and seed sequence return the same data. The numeric baseline
 outcomes are diagnostic of these scenarios only.
+The JSON now also includes a `layout_audit` computed from exact synthetic
+obstacle bounds: the number of unique evaluated layouts, the number of unique
+training layouts, and how many evaluated episodes/layouts reuse a training
+layout. This is descriptive qualification metadata, not a leakage-resistant
+split or evidence of model generalization. Because it is included in the
+report, newly sealed bundle digests differ from earlier V1 results; old
+bundles are not proof of qualification under the updated code.
 
 ## Research-aligned interfaces
 
@@ -51,6 +58,12 @@ layouts force a temporary increase in goal distance. Fixed disjoint sets:
 `TRAIN_SEEDS=0..19` and `HOLDOUT_SEEDS=1000..1019`.
 Different seeds are not evidence of distributional or domain transfer:
 both splits share one synthetic scenario family.
+Nor do distinct seeds imply distinct geometry. At this revision the 20
+holdout seeds reproduce layouts found in the training set in **6/20** barrier
+episodes and **3/20** zigzag episodes; the generator has only 32 possible
+barrier geometries. The current `holdout` means **seed-disjoint**, not
+**previously unseen obstacle configuration**. These collisions are disclosed
+without silently changing the historical seed lists or benchmark outcomes.
 
 - `RandomPolicy`: seeded cardinal actions, restricted observations.
 - `GreedyPolicy`: moves toward supplied goal offset; no obstacle planning.
