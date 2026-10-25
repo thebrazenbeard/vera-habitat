@@ -115,6 +115,44 @@ def test_finite_maximum_motion_uses_conservative_fallback_on_guard_overflow():
     assert candidates == frozenset({"distant"})
 
 
+def test_translated_padded_envelope_overflow_falls_back_to_all_obstacles():
+    # All input AABB bounds and the rounded travel displacement are finite,
+    # but their translated *sum* exceeds the largest finite binary64 number.
+    # Physica rejects the resulting swept AABB, although Habitat's rounded
+    # slab test sees an overlap. Avoid turning a simulation collision into an
+    # integration exception merely because a candidate envelope overflowed.
+    wall = Obstacle2("wall", 1.0000000000000008e308, 0.,
+                     1.000000000000001e308, 1.)
+    start = (-4503599627370496., .5)
+    end = (1e308, .5)
+    radius = 1e308
+    assert _swept_aabb_hit(start, end, wall, radius)
+    _assert_no_shadow_false_negative(start, end, wall, radius)
+    assert PhysicaCandidates(()).candidates(start, end, radius) == frozenset()
+
+
+def test_public_training_move_near_maxfinite_keeps_backend_parity():
+    largest = float_info.max
+    quantum = ulp(largest)
+    # The original padded AABB is representable at start - 20 ULP, but after
+    # the finite 18-ULP translation Physica's translated upper bound overflows.
+    # Both backends must allow this in-bounds obstacle-free simulation move.
+    settings = dict(
+        width_m=largest, height_m=10., speed_mps=18 * quantum,
+        radius_m=.2, goal_radius_m=.3,
+        start=(largest - 20 * quantum, 1.), goal=(1., 4.), obstacles=(),
+    )
+    action = TrainingAction("MOVE", 1., 0., 1000)
+    ordinary = NeutralTrainingGround(collision_backend="habitat", **settings)
+    shadow = NeutralTrainingGround(collision_backend="physica", **settings)
+    expected = ordinary.step(action)
+    actual = shadow.step(action)
+    assert expected.accepted is True
+    assert (actual.accepted, actual.disposition, actual.observation) == (
+        expected.accepted, expected.disposition, expected.observation,
+    )
+
+
 def test_maxfinite_world_never_diverges_only_from_padding_overflow():
     largest = float_info.max
     quantum = ulp(largest)

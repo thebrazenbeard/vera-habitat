@@ -86,6 +86,16 @@ class PhysicaCandidates:
                 return self._obstacle_ids
             motion_delta.append(delta)
 
+        # Physica requires translated *ending* AABB bounds to remain finite,
+        # not just the starting bounds and the displacement separately. A
+        # rounded, outward-padded upper/lower bound can overflow when the
+        # finite displacement is added. Use Habitat's conservative unpruned
+        # candidate superset in that case as well.
+        if any(not isfinite(bound + delta)
+               for padded, delta in zip(bounds, motion_delta)
+               for bound in padded):
+            return self._obstacle_ids
+
         motion = self._AABB(
             self._motion_id,
             (bounds[0][0], bounds[1][0]),
