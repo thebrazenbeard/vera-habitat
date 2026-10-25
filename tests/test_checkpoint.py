@@ -108,6 +108,47 @@ def test_checkpoint_rejects_edited_payload_without_updated_digest():
         HabitatRuntime.from_checkpoint(json.dumps(record))
 
 
+def test_checkpoint_rejects_unrepresentably_large_integer_coordinate_as_value_error():
+    from vera_habitat.checkpoint import canonical_digest
+
+    record = json.loads(example_runtime().export_checkpoint())
+    record["scene"]["entities"][0]["position"]["x"] = 10**400
+    record["sha256"] = canonical_digest(record)
+    with pytest.raises(ValueError, match="invalid scene coordinates"):
+        HabitatRuntime.from_checkpoint(json.dumps(record))
+
+
+@pytest.mark.parametrize("field", ["entity_id", "kind", "zone"])
+def test_checkpoint_rejects_noncanonical_entity_text_before_mutating_identity(field):
+    from vera_habitat.checkpoint import canonical_digest
+
+    world = HabitatRuntime()
+    world.spawn(Entity("vera", "AVATAR", "home", Position3(0, 0, 0)))
+    record = json.loads(world.export_checkpoint())
+    record["scene"]["entities"][0][field] = f" {record['scene']['entities'][0][field]} "
+    if field == "entity_id":
+        record["receipts"][0]["action_id"] = "spawn: vera "
+    record["sha256"] = canonical_digest(record)
+    with pytest.raises(ValueError, match="canonical"):
+        HabitatRuntime.from_checkpoint(json.dumps(record))
+
+
+def test_checkpoint_rejects_entities_with_duplicate_canonical_identity():
+    from vera_habitat.checkpoint import canonical_digest
+
+    world = HabitatRuntime()
+    world.spawn(Entity("a", "AVATAR", "home", Position3(0, 0, 0)))
+    world.spawn(Entity("b", "AVATAR", "home", Position3(1, 0, 0)))
+    record = json.loads(world.export_checkpoint())
+    record["scene"]["entities"][0]["entity_id"] = " a"
+    record["scene"]["entities"][1]["entity_id"] = "a"
+    record["receipts"][0]["action_id"] = "spawn: a"
+    record["receipts"][1]["action_id"] = "spawn:a"
+    record["sha256"] = canonical_digest(record)
+    with pytest.raises(ValueError, match="canonical"):
+        HabitatRuntime.from_checkpoint(json.dumps(record))
+
+
 def test_duplicate_json_keys_do_not_sneak_through_parse():
     # Duplicate object keys must not be silently 'last wins'.
     with pytest.raises(ValueError):

@@ -7,10 +7,9 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
-import math
 from typing import Any
 
-from .model import ActionReceipt, Entity, Position3, SceneSnapshot
+from .model import ActionReceipt, Entity, Position3, SceneSnapshot, _finite_real
 
 SCHEMA = "VERA_HABITAT_CHECKPOINT_V1"
 MAX_CHECKPOINT_BYTES = 1_048_576
@@ -80,6 +79,14 @@ def _clean_text(value: Any, label: str) -> str:
     return value
 
 
+def _canonical_entity_text(value: Any, label: str) -> str:
+    """Entity construction trims text; reject ambiguous serialized aliases."""
+    text = _clean_text(value, label)
+    if text != text.strip():
+        raise ValueError(f"{label} must use canonical entity text")
+    return text
+
+
 def _nonnegative_int(value: Any, label: str) -> int:
     if type(value) is not int or value < 0:
         raise ValueError(f"{label} must be a nonnegative integer")
@@ -130,14 +137,13 @@ def load_checkpoint(source: str) -> tuple[int, dict[str, Entity], list[ActionRec
         item = _exact_mapping(raw, {
             "entity_id", "kind", "zone", "position", "metadata"
         }, "entity")
-        eid = _clean_text(item["entity_id"], "entity_id")
-        kind = _clean_text(item["kind"], "kind")
-        zone = _clean_text(item["zone"], "zone")
+        eid = _canonical_entity_text(item["entity_id"], "entity_id")
+        kind = _canonical_entity_text(item["kind"], "kind")
+        zone = _canonical_entity_text(item["zone"], "zone")
         if eid in entities:
             raise ValueError("duplicate scene entity")
         coords = _exact_mapping(item["position"], {"x", "y", "z"}, "position")
-        if any(type(coords[k]) not in (float, int) or not math.isfinite(coords[k])
-               for k in ("x", "y", "z")):
+        if any(not _finite_real(coords[k]) for k in ("x", "y", "z")):
             raise ValueError("invalid scene coordinates")
         pos = Position3(float(coords["x"]), float(coords["y"]), float(coords["z"]))
         metadata = item["metadata"]

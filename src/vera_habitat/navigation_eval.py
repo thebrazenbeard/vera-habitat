@@ -9,6 +9,7 @@ from dataclasses import asdict
 import json
 from typing import Sequence
 
+from .model import _finite_real
 from .navigation import (
     TRAIN_SEEDS,
     HOLDOUT_SEEDS,
@@ -70,8 +71,6 @@ def build_evaluation_report(*, split: str, family: str, episodes: int,
                             max_steps: int, sensor_range_m: float,
                             policies: Sequence[str]) -> dict:
     """Recompute one bounded report without I/O or external authority."""
-    from math import isfinite
-
     if split not in ("train", "holdout") or family not in ("barrier", "zigzag"):
         raise ValueError("unsupported evaluation family or split")
     pool = TRAIN_SEEDS if split == "train" else HOLDOUT_SEEDS
@@ -79,8 +78,7 @@ def build_evaluation_report(*, split: str, family: str, episodes: int,
         raise ValueError("invalid evaluation episode count")
     if type(max_steps) is not int or not 1 <= max_steps <= 10000:
         raise ValueError("invalid evaluation step budget")
-    if (type(sensor_range_m) not in (int, float)
-            or not isfinite(sensor_range_m) or sensor_range_m <= 0):
+    if not _finite_real(sensor_range_m) or sensor_range_m <= 0:
         raise ValueError("invalid evaluation sensor range")
     results = evaluate_baselines(
         seeds=pool[:episodes], policies=policies,

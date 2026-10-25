@@ -127,6 +127,15 @@ def test_invalid_world_rejected(kwargs):
         NeutralTrainingGround(**kwargs)
 
 
+def test_unrepresentably_large_world_and_obstacle_coordinates_fail_closed():
+    with pytest.raises(ValueError, match="width_m must be a finite real"):
+        NeutralTrainingGround(width_m=10**1000)
+    with pytest.raises(ValueError, match="right must be a finite real"):
+        Obstacle2("wall", 0, 0, 10**1000, 1)
+    with pytest.raises(ValueError, match="x must be a finite real"):
+        TrainingAction("MOVE", x=10**1000, duration_ms=1000)
+
+
 def test_rejected_action_type_has_no_world_effect():
     g = NeutralTrainingGround()
     before = g.observe()

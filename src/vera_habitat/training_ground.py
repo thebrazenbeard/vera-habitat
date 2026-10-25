@@ -10,12 +10,12 @@ from dataclasses import dataclass
 from math import hypot, isfinite
 from typing import Sequence
 
-from .model import ActionProposal, EffectClass, Entity, Position3, SceneSnapshot
+from .model import ActionProposal, EffectClass, Entity, Position3, SceneSnapshot, _finite_real
 from .runtime import HabitatRuntime
 
 
 def _real(value: object, name: str) -> float:
-    if type(value) not in (float, int) or not isfinite(value):
+    if not _finite_real(value):
         raise ValueError(f"{name} must be a finite real number")
     return float(value)
 

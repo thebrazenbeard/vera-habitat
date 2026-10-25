@@ -5,6 +5,16 @@ import pytest
 from vera_habitat.navigation_eval import main
 
 
+def test_report_rejects_unrepresentably_large_sensor_range_as_value_error():
+    from vera_habitat.navigation_eval import build_evaluation_report
+
+    with pytest.raises(ValueError, match="invalid evaluation sensor range"):
+        build_evaluation_report(
+            split="holdout", family="barrier", episodes=1, max_steps=40,
+            sensor_range_m=10**1000, policies=("greedy",),
+        )
+
+
 def test_cli_emits_reproducible_heldout_report(capsys):
     args = ["--split", "holdout", "--episodes", "4"]
     assert main(args) == 0

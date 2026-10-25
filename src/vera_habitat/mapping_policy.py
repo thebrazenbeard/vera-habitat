@@ -7,9 +7,9 @@ rejected action dispositions. This is deterministic planning, not learning.
 from __future__ import annotations
 
 from heapq import heappop, heappush
-from math import isfinite
 from typing import TypeAlias
 
+from .model import _finite_real
 from .navigation import AgentObservation
 from .training_ground import TrainingAction
 
@@ -53,7 +53,7 @@ class MemoryMapPolicy:
     def __init__(self, *, extent: int = 10, radius: float = 0.2) -> None:
         if type(extent) is not int or not 3 <= extent <= 100:
             raise ValueError("extent must be an integer in [3,100]")
-        if type(radius) not in (int, float) or not isfinite(radius) or not 0 < radius < 0.5:
+        if not _finite_real(radius) or not 0 < radius < 0.5:
             raise ValueError("radius must be positive and under half a cell")
         self.extent = extent
         self.radius = float(radius)
