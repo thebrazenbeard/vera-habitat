@@ -7,6 +7,13 @@ from vera_habitat.mapping_policy import MemoryMapPolicy
 from vera_habitat.training_ground import TrainingAction
 
 
+def test_mapping_radius_rejects_unrepresentably_large_integer_as_value_error():
+    import pytest
+
+    with pytest.raises(ValueError, match="radius must be positive"):
+        MemoryMapPolicy(radius=10**1000)
+
+
 def test_memory_policy_uses_only_observations_and_replans_after_rejection():
     episode = NavigationEpisode(1000)
     policy = MemoryMapPolicy()

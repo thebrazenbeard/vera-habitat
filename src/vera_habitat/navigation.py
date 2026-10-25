@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from heapq import heappop, heappush
-from math import hypot, isfinite
+from math import hypot
 from random import Random
 from typing import Protocol, Sequence
 
+from .model import _finite_real
 from .training_ground import (
     NeutralTrainingGround, Obstacle2, TrainingAction, _swept_aabb_hit,
 )
@@ -85,8 +86,7 @@ class NavigationEpisode:
     """Explicit reset/step interface; world truth never passed to policy."""
     def __init__(self, seed: int, *, sensor_range_m: float = 2.0,
                  max_steps: int = 40, family: str = "barrier"):
-        if type(sensor_range_m) not in (int, float) or (
-                not isfinite(sensor_range_m) or sensor_range_m <= 0):
+        if not _finite_real(sensor_range_m) or sensor_range_m <= 0:
             raise ValueError("sensor_range_m must be positive and finite")
         if type(max_steps) is not int or not 1 <= max_steps <= 10000:
             raise ValueError("max_steps must be an integer in [1,10000]")
@@ -312,8 +312,7 @@ def evaluate_baselines(
         raise ValueError("unknown scenario family")
     if type(max_steps) is not int or not 1 <= max_steps <= 10000:
         raise ValueError("max_steps must be in [1,10000]")
-    if (type(sensor_range_m) not in (int, float) or
-            not isfinite(sensor_range_m) or sensor_range_m <= 0):
+    if not _finite_real(sensor_range_m) or sensor_range_m <= 0:
         raise ValueError("sensor_range_m must be positive and finite")
     seeds = tuple(seeds)
     policies = tuple(policies)

@@ -13,7 +13,6 @@ distributed lock, hostile-process sandbox, or anti-rollback mechanism.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import math
 import hashlib
 import hmac
 import json
@@ -24,6 +23,7 @@ import tempfile
 from .anchor import AnchorHead, TrustedAnchor
 from ._file_lock import exclusive_checkpoint_lock as _exclusive_checkpoint_lock
 from .checkpoint import _object_pairs_no_duplicates
+from .model import _finite_real
 from .runtime import HabitatRuntime
 
 
@@ -65,8 +65,7 @@ class AuthenticatedFileStore:
             raise ValueError("checkpoint path required")
         if type(key) is not bytes or len(key) < 32:
             raise ValueError("HMAC key must be at least 32 bytes")
-        if (type(lock_timeout_seconds) not in (int, float)
-                or not math.isfinite(lock_timeout_seconds)
+        if (not _finite_real(lock_timeout_seconds)
                 or not 0 <= lock_timeout_seconds <= 30):
             raise ValueError("lock_timeout_seconds must be finite in [0, 30]")
         if anchor is not None:

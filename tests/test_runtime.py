@@ -1,3 +1,5 @@
+import pytest
+
 from vera_habitat import ActionProposal, EffectClass, Entity, HabitatRuntime, Position3
 from vera_habitat.model import ActionProposal as Proposal
 
@@ -36,3 +38,9 @@ def test_snapshot_is_sorted_and_non_authoritative_projection():
     runtime.spawn(Entity("alpha", "OBJECT", "room", Position3(1, 0, 0)))
     snapshot = runtime.snapshot()
     assert [item.entity_id for item in snapshot.entities] == ["alpha", "zeta"]
+
+
+@pytest.mark.parametrize("coordinate", [10**400, True, "1.0"])
+def test_position_rejects_nonfinite_or_nonnumeric_coordinates_as_value_error(coordinate):
+    with pytest.raises(ValueError, match="coordinates must be finite"):
+        Position3(coordinate, 0, 0)

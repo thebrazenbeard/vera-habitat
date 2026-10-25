@@ -85,6 +85,13 @@ def test_unknown_policy_and_duplicate_seeds_fail_closed():
         NavigationEpisode(1, sensor_range_m=0)
 
 
+def test_navigation_rejects_unrepresentably_large_sensor_range_as_value_error():
+    with pytest.raises(ValueError, match="sensor_range_m must be positive and finite"):
+        NavigationEpisode(0, sensor_range_m=10**1000)
+    with pytest.raises(ValueError, match="sensor_range_m must be positive and finite"):
+        evaluate_baselines(seeds=(0,), sensor_range_m=10**1000)
+
+
 def test_policy_receives_only_observation_and_invalid_action_is_counted():
     class InvalidPolicy:
         def choose_action(self, observation):

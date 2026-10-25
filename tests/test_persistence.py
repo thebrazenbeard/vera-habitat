@@ -268,7 +268,7 @@ def test_authenticated_old_file_can_still_be_rolled_back_without_trusted_anchor(
 
 def test_lock_timeout_configuration_is_bounded_and_explicit(tmp_path):
     location = tmp_path / "checkpoint.sealed.json"
-    for invalid in (-1, float("nan"), float("inf"), True, "instant"):
+    for invalid in (-1, float("nan"), float("inf"), True, "instant", 10**1000):
         with pytest.raises(ValueError):
             AuthenticatedFileStore(location, KEY, writer_id="offline-local-test",
                                    lock_timeout_seconds=invalid)

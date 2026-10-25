@@ -17,6 +17,16 @@ def _nonempty(value: str, field_name: str) -> str:
     return value
 
 
+def _finite_real(value: object) -> bool:
+    """Reject nonnumeric, Boolean and unrepresentably large coordinates."""
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 @dataclass(frozen=True, slots=True)
 class Position3:
     x: float
@@ -24,7 +34,7 @@ class Position3:
     z: float
 
     def __post_init__(self) -> None:
-        if not all(math.isfinite(v) for v in (self.x, self.y, self.z)):
+        if not all(_finite_real(v) for v in (self.x, self.y, self.z)):
             raise ValueError("coordinates must be finite")
 
 
