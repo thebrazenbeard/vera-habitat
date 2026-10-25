@@ -9,6 +9,7 @@ from dataclasses import replace
 
 from .model import (
     ActionProposal, ActionReceipt, EffectClass, Entity, Position3, SceneSnapshot,
+    _require_utf8,
 )
 
 
@@ -64,6 +65,7 @@ class HabitatRuntime:
             raise ValueError("only typed ActionProposal records are accepted")
         if type(proposal.action_id) is not str or not proposal.action_id.strip():
             raise ValueError("proposal requires a nonempty text action_id")
+        _require_utf8(proposal.action_id, "action_id")
 
         before = self._revision
         if proposal.action_id in self._seen_action_ids:

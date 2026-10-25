@@ -166,6 +166,45 @@ def test_snapshot_isolation_of_source_metadata():
         world.snapshot().entities[0].metadata["owner"] = "changed"
 
 
+@pytest.mark.parametrize(
+    "field", ["entity_id", "kind", "zone", "metadata_key", "metadata_value"]
+)
+def test_entity_rejects_non_utf8_text_before_spawning(field):
+    bad = "bad" + chr(0xD800)
+    kwargs = dict(entity_id="avatar", kind="AVATAR", zone="room",
+                  position=Position3(0, 0, 0), metadata={"role": "observer"})
+    if field.startswith("metadata_"):
+        kwargs["metadata"] = {bad: "observer"} if field == "metadata_key" else {"role": bad}
+    else:
+        kwargs[field] = bad
+    with pytest.raises(ValueError, match="UTF-8"):
+        Entity(**kwargs)
+
+
+def test_non_utf8_action_id_does_not_poison_checkpointable_world():
+    world = example_runtime()
+    prior_checkpoint = world.export_checkpoint()
+    prior_revision = world.revision
+    proposal = Proposal("move-" + chr(0xD800), EffectClass.SIMULATION_ONLY,
+                        "MOVE_ENTITY", "vera", Position3(1, 2, 3))
+    with pytest.raises(ValueError, match="UTF-8"):
+        world.propose(proposal)
+    assert world.revision == prior_revision
+    assert world.export_checkpoint() == prior_checkpoint
+    assert world.propose(Proposal("move-valid", EffectClass.SIMULATION_ONLY,
+                         "MOVE_ENTITY", "vera", Position3(1, 2, 3))).accepted
+    assert HabitatRuntime.from_checkpoint(world.export_checkpoint()).revision == prior_revision + 1
+
+
+def test_valid_multibyte_unicode_remains_checkpointable():
+    world = HabitatRuntime()
+    assert world.spawn(Entity("avatar-🛰", "AVATAR", "room-🌎",
+                              Position3(0, 0, 0), {"mood": "curious-✨"})).accepted
+    assert world.propose(Proposal("step-🚀", EffectClass.SIMULATION_ONLY,
+                                 "MOVE_ENTITY", "avatar-🛰", Position3(1, 0, 0))).accepted
+    assert HabitatRuntime.from_checkpoint(world.export_checkpoint()).snapshot() == world.snapshot()
+
+
 def test_checkpoint_rejects_oversized_and_nonjson_payload():
     with pytest.raises(ValueError):
         HabitatRuntime.from_checkpoint("{" * 2_000_000)
