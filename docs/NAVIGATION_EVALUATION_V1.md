@@ -21,6 +21,14 @@ The CLI emits deterministic JSON under
 `VERA_HABITAT_NAV_EVALUATION_V1`. Random-policy choices are seeded.
 The same code and seed sequence return the same data. The numeric baseline
 outcomes are diagnostic of these scenarios only.
+The optional `build_layout_audit(split=..., family=..., episodes=...)` API and
+`python -m vera_habitat.navigation_eval --layout-audit-only` CLI produce a
+**separate** `VERA_HABITAT_NAV_LAYOUT_AUDIT_V1` diagnostic. It counts unique
+evaluated obstacle layouts, unique training layouts, and reused training
+episodes/layouts. This is qualification metadata, not a leakage-resistant
+split or evidence of model generalization. Ordinary V1 report payloads,
+sealed bundle fingerprints and V1 replay verification remain unchanged;
+the audit is intentionally not inserted into them.
 
 ## Research-aligned interfaces
 
@@ -51,6 +59,13 @@ layouts force a temporary increase in goal distance. Fixed disjoint sets:
 `TRAIN_SEEDS=0..19` and `HOLDOUT_SEEDS=1000..1019`.
 Different seeds are not evidence of distributional or domain transfer:
 both splits share one synthetic scenario family.
+Nor do distinct seeds imply distinct geometry. At this revision the 20
+holdout seeds reproduce layouts found in the training set in **6/20** barrier
+episodes and **3/20** zigzag episodes; the generator has only 32 possible
+barrier geometries. The current `holdout` means **seed-disjoint**, not
+**previously unseen obstacle configuration**. These collisions are exposed
+via the separate audit and documented here, without silently changing
+historical seed lists, benchmark outcomes, or V1 bundles.
 
 - `RandomPolicy`: seeded cardinal actions, restricted observations.
 - `GreedyPolicy`: moves toward supplied goal offset; no obstacle planning.
