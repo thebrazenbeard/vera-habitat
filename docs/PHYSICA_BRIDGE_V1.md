@@ -22,10 +22,11 @@ candidates do not block valid moves. This is intentional **shadow checking**:
 extra work prioritizes behavior parity and fault detection rather than speed.
 It is not a real contact solver, time-of-impact solver or physical validation.
 
-The optional GitHub CI matrix installs one of three reviewed exact Physica
+The optional GitHub CI matrix installs one of four reviewed exact Physica
 commits: the original `9cc1ae9c04f728c10d6bdd9f3b277083eb46a834`, the
 physics/ML/security integration `8160ed36fb77d4764414f854847447fdc23794d6`,
-and the adaptive-solver correction `d3fc07fcb2ca52a406cfaf9e3a3c09a4a66fb3cf`.
+the adaptive-solver correction `d3fc07fcb2ca52a406cfaf9e3a3c09a4a66fb3cf`,
+and the oversized-ARK-integer validation `b11dff8f2b48cdccc559625573b960624d7bb737`.
 It imports the actual provider and runs both ordinary and precision-edge
 integration tests against each immutable revision.
 Normal Habitat dependencies remain unchanged; test skips without Physica
