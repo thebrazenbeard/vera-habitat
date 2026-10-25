@@ -37,8 +37,9 @@ V2 adds:
   and duplicate-spawn receipts;
 - a detached renderer JSON projection with no mutation authority;
 - a read-only 3D AABB broad-phase candidate index, with independent tests;
-- bounded `times`/`states` trajectory-to-*proposal* previews compatible
-  with Physica's numerical output protocol, without automatic submission;
+- bounded `times`/`states` trajectory-to-*proposal* previews with a total
+  generated action-ID character budget, compatible with Physica's numerical
+  output protocol and without automatic submission;
 - adversarial regression tests, source-bound review of the eleven supplied
   physics, geometry, learning and Unreal interoperability repositories.
 
