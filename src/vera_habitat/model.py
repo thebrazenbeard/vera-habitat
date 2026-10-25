@@ -14,7 +14,16 @@ def _nonempty(value: str, field_name: str) -> str:
     value = value.strip()
     if not value:
         raise ValueError(f"{field_name} must not be empty")
+    _require_utf8(value, field_name)
     return value
+
+
+def _require_utf8(value: str, field_name: str) -> None:
+    """Keep accepted runtime text representable by checkpoint UTF-8 JSON."""
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ValueError(f"{field_name} must be valid UTF-8 text") from exc
 
 
 def _finite_real(value: object) -> bool:
@@ -50,7 +59,13 @@ class Entity:
         object.__setattr__(self, "entity_id", _nonempty(self.entity_id, "entity_id"))
         object.__setattr__(self, "kind", _nonempty(self.kind, "kind"))
         object.__setattr__(self, "zone", _nonempty(self.zone, "zone"))
-        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
+        metadata = dict(self.metadata)
+        for key, value in metadata.items():
+            if type(key) is str:
+                _require_utf8(key, "metadata key")
+            if type(value) is str:
+                _require_utf8(value, "metadata value")
+        object.__setattr__(self, "metadata", MappingProxyType(metadata))
 
 
 class EffectClass(str, Enum):
