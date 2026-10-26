@@ -67,6 +67,95 @@ def build_layout_audit(*, split: str, family: str, episodes: int) -> dict:
     }
 
 
+def _translation_normalized_signature(obstacles: Sequence) -> tuple:
+    """Canonicalize shape under global horizontal translation, not rotation.
+
+    The seeded generator's horizontal coordinates use decimal tenths; round
+    translated float differences to nine places to avoid phantom novelty from
+    binary representation artifacts. Vertical bounds and inter-box spacing
+    stay significant. This does not normalize start/goal or dynamics.
+    """
+    if not obstacles:
+        return ()
+    origin_x = min(box.left for box in obstacles)
+    return tuple(sorted(
+        (round(box.left - origin_x, 9), box.bottom,
+         round(box.right - origin_x, 9), box.top)
+        for box in obstacles
+    ))
+
+
+def geometry_disjoint_holdout_seeds(family: str) -> tuple[int, ...]:
+    """Select public holdout seeds with unseen translation-normalized shape.
+
+    Fail closed when the generator provides no novel shape; this particularly
+    matters for barrier, whose coordinate-distinct layouts are all global
+    horizontal translations of training shapes. Not a secret test set.
+    """
+    if family not in ("barrier", "zigzag"):
+        raise ValueError("unsupported evaluation family")
+    generator = make_scenario if family == "barrier" else make_zigzag_scenario
+
+    def signature(seed: int) -> tuple:
+        return _translation_normalized_signature(generator(seed).obstacles)
+
+    seen = {signature(seed) for seed in TRAIN_SEEDS}
+    selected: list[int] = []
+    for seed in HOLDOUT_SEEDS:
+        layout = signature(seed)
+        if layout not in seen:
+            selected.append(seed)
+            seen.add(layout)
+    return tuple(selected)
+
+
+def build_geometry_disjoint_evaluation_report(
+    *, family: str, episodes: int, max_steps: int,
+    sensor_range_m: float, policies: Sequence[str],
+) -> dict:
+    """Evaluate a public synthetic holdout with no translated-shape collisions.
+
+    This opt-in report uses a separate schema: V1 reports and sealed replay
+    bundle identities are deliberately untouched.
+    """
+    seeds = geometry_disjoint_holdout_seeds(family)
+    if not seeds:
+        raise ValueError(f"no translation-disjoint layouts available for {family}")
+    if type(episodes) is not int or not 1 <= episodes <= len(seeds):
+        raise ValueError("invalid geometry-disjoint episode count")
+    if type(max_steps) is not int or not 1 <= max_steps <= 10000:
+        raise ValueError("invalid evaluation step budget")
+    if not _finite_real(sensor_range_m) or sensor_range_m <= 0:
+        raise ValueError("invalid evaluation sensor range")
+    selected = seeds[:episodes]
+    results = evaluate_baselines(
+        seeds=selected, policies=policies, family=family,
+        max_steps=max_steps, sensor_range_m=sensor_range_m,
+    )
+    return {
+        "schema_version": "VERA_HABITAT_NAV_GEOMETRY_DISJOINT_EVAL_V1",
+        "split": "holdout_geometry_disjoint",
+        "family": family,
+        "max_steps": max_steps,
+        "sensor_range_m": sensor_range_m,
+        "seeds": list(selected),
+        "train_layout_reuse_count": 0,
+        "geometry_signature": "obstacle_bounds_translation_normalized_x_v1",
+        "selection_rule": "first_public_holdout_shape_absent_from_train_v1_up_to_horizontal_translation",
+        "baselines": [asdict(result) for result in results],
+        "limitations": [
+            "not_a_generalization_claim",
+            "public_generator_and_seed_selection_can_be_gamed",
+            "same_synthetic_scenario_families_as_training",
+            "translation_normalized_horizontal_shape_not_semantic_or_dynamics_disjointness",
+            "start_goal_relation_to_obstacles_is_not_normalized",
+            "oracle_has_privileged_full_map",
+            "no_live_Vera_runtime_or_hardware_actuation",
+            "NO_AUTO_BIND",
+        ],
+    }
+
+
 def build_evaluation_report(*, split: str, family: str, episodes: int,
                             max_steps: int, sensor_range_m: float,
                             policies: Sequence[str]) -> dict:
@@ -115,8 +204,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--family", choices=("barrier", "zigzag"), default="barrier")
     parser.add_argument("--max-steps", type=int, default=40)
     parser.add_argument("--sensor-range", type=float, default=2.0)
-    parser.add_argument("--episodes", type=int, default=20,
-                        help="Number of deterministic seed layouts (1..20)")
+    parser.add_argument("--episodes", type=int, default=None,
+                        help="Number of deterministic seed layouts (default: 20 for V1, all unseen geometries for opt-in mode)")
     parser.add_argument("--policies", nargs="+",
                         choices=("random", "greedy", "memory", "oracle"),
                         default=["random", "greedy", "oracle"])
@@ -124,7 +213,34 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="Include a public digest and replay-verifiable payload")
     parser.add_argument("--layout-audit-only", action="store_true",
                         help="Print a separate geometry overlap audit without altering V1 reports")
+    parser.add_argument("--geometry-disjoint", action="store_true",
+                        help="Opt into a separate public unseen-geometry holdout; not a generalization claim")
     args = parser.parse_args(argv)
+    if args.geometry_disjoint:
+        if args.split != "holdout":
+            parser.error("--geometry-disjoint is holdout-only")
+        if args.bundle or args.layout_audit_only:
+            parser.error("--geometry-disjoint cannot use V1 bundles or layout-audit-only")
+        available = len(geometry_disjoint_holdout_seeds(args.family))
+        if not available:
+            parser.error(f"no translation-disjoint layouts available for {args.family}")
+        count = available if args.episodes is None else args.episodes
+        if not 1 <= count <= available:
+            parser.error(f"--episodes must be between 1 and {available} in geometry-disjoint mode")
+        if not 1 <= args.max_steps <= 10000:
+            parser.error("--max-steps must be between 1 and 10000")
+        from math import isfinite
+        if not isfinite(args.sensor_range) or args.sensor_range <= 0:
+            parser.error("--sensor-range must be finite and positive")
+        report = build_geometry_disjoint_evaluation_report(
+            family=args.family, episodes=count, max_steps=args.max_steps,
+            sensor_range_m=args.sensor_range, policies=args.policies,
+        )
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
+
+    if args.episodes is None:
+        args.episodes = 20
     pool = TRAIN_SEEDS if args.split == "train" else HOLDOUT_SEEDS
     if not 1 <= args.episodes <= len(pool):
         parser.error(f"--episodes must be between 1 and {len(pool)}")
