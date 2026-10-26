@@ -30,6 +30,45 @@ split or evidence of model generalization. Ordinary V1 report payloads,
 sealed bundle fingerprints and V1 replay verification remain unchanged;
 the audit is intentionally not inserted into them.
 
+### Opt-in geometry-disjoint diagnostic
+
+To exclude training obstacle *shapes*, including shapes that differ only by
+global horizontal translation, use a separate holdout report. Its public
+signature subtracts the minimum obstacle-left coordinate from each obstacle's
+left/right bounds, rounds translated floats to nine decimal places, retains
+the exact vertical bounds, and sorts the resulting rectangle tuples. The
+selector walks existing holdout seeds in order, keeping the first previously
+unseen normalized signature. It removes both training collisions and repeated
+selected shapes:
+
+```bash
+python -m vera_habitat.navigation_eval --geometry-disjoint --family zigzag
+python -m vera_habitat.navigation_eval --geometry-disjoint --family zigzag --episodes 4 --policies greedy oracle
+```
+
+At this revision the bounded public pool yields **no unseen barrier shapes**:
+all 8 raw-coordinate novel barrier layouts are horizontal translations of
+training shapes. Thus `--geometry-disjoint --family barrier` fails with an
+explicit zero-capacity error instead of inventing evidence. The zigzag family
+yields **9 unseen shapes** (`1000, 1001, 1002, 1004, 1006, 1008, 1014, 1015,
+1019`). Without `--episodes`, all available disjoint zigzag shapes are
+evaluated. Requesting more than capacity fails closed; the selector does not
+silently supplement from overlapping shapes. The mode accepts only the
+holdout split and rejects V1 `--bundle` and `--layout-audit-only` combinations
+rather than reusing their identities.
+
+The JSON schema is `VERA_HABITAT_NAV_GEOMETRY_DISJOINT_EVAL_V1`, separate from
+the established seed-disjoint `VERA_HABITAT_NAV_EVALUATION_V1` schema. Neither
+historical V1 reports nor sealed replay payloads nor their fingerprints are
+changed. Run the ordinary CLI to reproduce old reports and verify old replay
+bundles. This additional report is a public, synthetic diagnostic: generators,
+seeds, layouts, and selection are known, so it **cannot qualify model
+generalization**, unseen dynamics, visual navigation, runtime learning,
+or actual ARK/PS4 performance. This normalization does not equate rotations,
+vertical translations, altered start/goal relationships or changes in
+navigation dynamics, and remains narrower than semantic or motion-model
+novelty. `NO_AUTO_BIND` remains in force.
+
 ## Research-aligned interfaces
 
 `NavigationEpisode(seed, sensor_range_m=2.0, max_steps=40)` creates an
