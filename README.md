@@ -1,147 +1,78 @@
-> **License:** Source-visible, not open source. Original material is proprietary. Commercial use, redistribution, hosted-service use, and commercial derivative products require written permission. See [LICENSE](LICENSE) and [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md). Separately identified third-party components retain their own licenses.
+> **License:** Source-visible, not open source. Original material is proprietary. The [license](LICENSE) permits limited private, noncommercial evaluation; redistribution, commercial use, hosted use, and commercial derivatives require written permission. See [commercial terms](COMMERCIAL_LICENSE.md) and [third-party notices](NOTICE).
 
-# vera-habitat
+# Vera Habitat — deterministic virtual-world toolkit
 
-Engine-neutral virtual-environment substrate for Vera.
+Vera Habitat is a **Python library for building isolated, inspectable virtual environments**. Applications can maintain a small typed world, propose simulation-only movements, receive acceptance or rejection receipts, export integrity-checked checkpoints, and give renderers detached read-only scene data. Optional utilities support synthetic navigation exercises and reproducible evaluation.
 
-The Habitat is a modeled world Vera may observe and interact with. It is not Vera's identity, memory authority, control plane, or automatic bridge to the physical world.
+It is designed as a **reusable simulation substrate**: the consumer supplies its own agents, renderer, user interface, and governance. There is no game engine, background daemon, physical actuator, agent identity service, or automatically activated integration with another system.
 
-## V1 thesis
+## What is implemented
 
-A useful habitat needs a deterministic state core before it needs a renderer.
+| Area | Available source behavior | Boundary |
+| --- | --- | --- |
+| World state | Typed entities, finite 3D positions, revisions, simulation movement proposals, receipts | One in-memory `HabitatRuntime` owns mutations; external effects are rejected |
+| Read-only views | Immutable `SceneSnapshot` and deterministic JSON scene projection | Renderers receive no mutation or transport authority |
+| Checkpoints | Canonical JSON export/import with SHA-256 content fingerprint and action-ID replay guard | Integrity is not origin authentication or trusted anti-rollback |
+| Optional local persistence | Explicit HMAC-authenticated file save/load and cooperative writer lock | Caller supplies the secret; no service, key, user authentication, or distributed lock is installed |
+| Optional rollback anchor | `TrustedAnchor` protocol for a separately protected monotonic compare-and-swap service | Only an interface: no independently trusted provider ships in this repository |
+| Spatial and navigation tools | Read-only AABB broad phase, bounded trajectory previews, synthetic navigation and evaluation bundles | Candidate geometry and simulated scores are not contact physics or real-world learning results |
+| Physica bridge | Opt-in swept-envelope broad-phase shadow with fail-closed candidate checks | Does not import external actuation rights or prove physical accuracy |
 
-The V1 foundation implements:
-- versioned virtual world state;
-- typed entities and 3D positions;
-- deterministic simulation-only actions;
-- immutable scene snapshots for renderers;
-- append-only receipts for accepted/rejected proposals;
-- an explicit boundary between virtual simulation and external effects;
-- tests and CI.
-
-`RENDERING != WORLD_STATE`
-
-`SIMULATED_EFFECT != EXTERNAL_EFFECT`
-
-`ACTION_PROPOSAL != AUTHORITY`
-
-`SCENE_SNAPSHOT != MEMORY`
-
-## V2: source-only reconstruction and spatial capability
-
-V2 adds:
-- a portable JSON checkpoint of scene, receipt history and replay guard, with
-  schema validation and SHA-256 content fingerprinting (**not** authenticity);
-- protection against applying the same proposal action ID more than once,
-  including a restore-time check for causally impossible duplicate-action
-  and duplicate-spawn receipts;
-- a detached renderer JSON projection with no mutation authority;
-- a read-only 3D AABB broad-phase candidate index, with independent tests;
-- bounded `times`/`states` trajectory-to-*proposal* previews with a total
-  generated action-ID character budget, compatible with Physica's numerical
-  output protocol and without automatic submission;
-- adversarial regression tests, source-bound review of the eleven supplied
-  physics, geometry, learning and Unreal interoperability repositories.
-
-These are **not** a physical engine, persistent database, autonomous RL agent,
-renderer, or a new authority route to Vera. See
-[Architecture V2](docs/ARCHITECTURE_V2.md) for tested contracts and limits.
-
-## V0.3 candidate: opt-in authenticated local recovery
-
-`AuthenticatedFileStore` supports explicit local save/load of simulated
-Habitat checkpoints, authenticated by an **externally supplied HMAC key**.
-It preserves versioned state and action receipts, requires an expected prior
-seal and an append-only receipt continuation before overwriting, and uses
-same-directory temporary files with atomic replacement. Loading validates the keyed MAC before reconstructing the world.
-
-Importing Habitat neither creates a file nor connects to Vera. This does
-**not** authenticate the writer's personal identity, stop signed-file
-rollback, coordinate concurrent writers, or establish canonical Vera
-runtime/memory currentness. No secret keys or services are provisioned.
-
-See [Local authenticated recovery V1](docs/LOCAL_AUTHENTICATED_RECOVERY_V1.md)
-for an explicit usage example and the security/failure limitations.
-
-## V0.3.1 candidate: cooperating local writer coordination
-
-The optional authenticated file store now takes a persistent sidecar OS lock
-for the full predecessor-check/write critical section. Timeouts fail closed;
-a second cooperating process cannot overwrite a winning generation using a
-stale predecessor seal. The lock does **not** solve trusted anti-rollback,
-distributed/NAS concurrency, or hostile file tampering. See the
-[recovery threat model](docs/LOCAL_AUTHENTICATED_RECOVERY_V1.md).
-
-## V0.3.2 candidate: optional external anti-rollback anchor
-
-An explicit `TrustedAnchor` protocol can guard opt-in local checkpoint
-loads and saves against stale sealed files **only when supplied with a real,
-independently protected monotonic compare-and-swap authority**. No anchor
-provider, network connection, key, service, or external effect is installed.
-The default unanchored store retains its previous rollback limitations.
-A file-write failure after a successful high-water advance fails recovery
-closed until separately governed reconciliation. See
-[anchored recovery](docs/TRUSTED_ANTI_ROLLBACK_V1.md).
-
-## V0.3.3 candidate: replay-verifiable navigation evaluation
-
-The optional `navigation_eval --bundle` output has a deterministic public
-SHA-256 report fingerprint and can be replay-checked with
-`vera_habitat.eval_bundle.verify_evaluation_bundle`. Default CLI output is
-unchanged. Same-code replay is **not** authentication or independent evidence.
-See [evaluation bundle](docs/EVALUATION_BUNDLE_V1.md).
-
-## Optional navigation layout-overlap audit
-
-The opt-in command below reports repeated synthetic obstacle layouts
-between the seed-disjoint training and holdout sets. It emits a separate
-`VERA_HABITAT_NAV_LAYOUT_AUDIT_V1` diagnostic without modifying ordinary
-navigation evaluation reports or historical sealed V1 bundles. It does not
-demonstrate model generalization or physical prediction validity. See
-[navigation evaluation](docs/NAVIGATION_EVALUATION_V1.md).
-
-```bash
-python -m vera_habitat.navigation_eval --layout-audit-only --split holdout --episodes 20
-```
-
-## Optional Physica shadow broad-phase
-
-Habitat can explicitly use Physica's deterministic swept-envelope 2D AABB candidate sweep in
-`NeutralTrainingGround(collision_backend="physica")`. The ordinary backend is
-unchanged. The Physica adapter checks its candidates against Habitat's
-independent swept collision logic and fails closed on missing candidates.
-A separate pinned-source CI job tests this opt-in integration; it is **not**
-full physics or contact certification. See [Physica integration](docs/PHYSICA_BRIDGE_V1.md).
+The package is currently version **0.3.5** (`pyproject.toml`) and supports **Python 3.11+**. Its core declares no third-party runtime dependencies; the development extra adds pytest.
 
 ## Quick start
 
-```bash
-python -m pip install -e .[dev]
-pytest
+From a checkout:
+
+```sh
+python -m pip install -e ".[dev]"
+python -m pytest
 python -m vera_habitat.demo
+python -m vera_habitat.neutral_demo
 ```
 
-The demo creates a room, spawns a Vera avatar, applies a simulation-only
-move, and prints the snapshot and receipt.
+The demos create synthetic scenes and print simulation results; they do not contact a device or connect to a host agent.
+
+Minimal standalone application example:
 
 ```python
 from vera_habitat import (
-    HabitatRuntime, AABB3, SpatialProjection, render_scene_json, Position3,
+    ActionProposal, Entity, HabitatRuntime, Position3, render_scene_json,
 )
 
-# World state is still owned by HabitatRuntime, never by its projection.
 world = HabitatRuntime()
-# After explicitly spawning entities and accepting any proposals:
+world.spawn(Entity("agent-1", "AVATAR", "test-room", Position3(0, 0, 0)))
+
+receipt = world.propose(ActionProposal.move("agent-1", Position3(1, 0, 0)))
+assert receipt.accepted
+
+scene = world.snapshot()
+print(render_scene_json(scene))  # Detached JSON for a renderer
+
 checkpoint = world.export_checkpoint()
 restored = HabitatRuntime.from_checkpoint(checkpoint)
-scene_json = render_scene_json(restored.snapshot())
+assert restored.snapshot() == scene
 ```
 
-A checkpoint has a digest for integrity, not a signed origin. Its source label
-and source-control commit do **not** imply a live Vera runtime was updated.
+An accepted movement changes this *simulated* state only. Reusing a proposal action ID is rejected; restoring a checkpoint does not bind the reconstructed scene to an existing runtime, trusted owner, or device.
 
-## Runtime binding
+## Optional research and integration surfaces
 
-The canonical Vera portfolio currently classifies this repository as `NO_AUTO_BIND`. This source foundation does not change that. A renderer, Vera runtime route, embodiment link, network transport, or physical-world actuator requires separate design, authorization, and qualification.
+- **Synthetic navigation:** `python -m vera_habitat.navigation_eval --help` documents reproducible train/holdout comparisons, an optional layout-overlap audit, and replay-verifiable evaluation bundles. See [navigation evaluation](docs/NAVIGATION_EVALUATION_V1.md) and [evaluation bundle](docs/EVALUATION_BUNDLE_V1.md). Scores do not establish trained-model generalization.
+- **Spatial projection:** [Architecture V2](docs/ARCHITECTURE_V2.md) describes the read-only AABB index, bounded trajectory previews, and replay checks. A broad-phase candidate is not a confirmed collision.
+- **Local recovery:** [Authenticated file recovery](docs/LOCAL_AUTHENTICATED_RECOVERY_V1.md) describes explicit HMAC file persistence, atomic replacement, and cooperative locking. Neither hashes nor HMAC alone prevent a valid older checkpoint from being replayed.
+- **Trusted anti-rollback:** [Trusted anchor contract](docs/TRUSTED_ANTI_ROLLBACK_V1.md) specifies the separately governed compare-and-swap authority a caller must provide. Without that provider, anti-rollback remains unqualified.
+- **Optional physics adapter:** [Physica bridge](docs/PHYSICA_BRIDGE_V1.md) explains the shadow broad-phase and fail-closed cross-check. It is not a full physical simulation or an automatically enabled dependency.
+- **Evidence collection:** [Evaluation bundle](docs/EVALUATION_BUNDLE_V1.md) verifies deterministic same-code replays, not an authenticated independent source.
 
-See [Architecture V1](docs/ARCHITECTURE_V1.md), [Architecture V2](docs/ARCHITECTURE_V2.md), and [Authority and renderer boundary](docs/AUTHORITY_AND_RENDERER_BOUNDARY_V1.md).
+## Integration and authority
+
+Habitat has a deliberate **`NO_AUTO_BIND`** boundary. Importing the package starts no process, opens no network route, installs no renderer, and grants no external permission. A simulated proposal or a scene snapshot is neither consent nor host authorization.
+
+The source does **not** provide cryptographically bound provider identity, a coherent host authorization service, persistent personal identity, an autonomously operating agent, or a route to physical hardware. Applications seeking those capabilities need separate authenticated, host-owned controls and independent qualification. See [Authority and renderer boundary](docs/AUTHORITY_AND_RENDERER_BOUNDARY_V1.md) and [Architecture V1](docs/ARCHITECTURE_V1.md).
+
+## Tests, security and contributions
+
+The [test workflow](.github/workflows/test.yml) exercises supported Python versions and optional integration checks. Run `python -m pytest` after installing the development extra. Source tests and successful CI demonstrate bounded repository behavior, not live-host deployment or a formal proof of safety.
+
+Review [contribution terms](CONTRIBUTING.md), [license](LICENSE), and [security boundaries](docs/AUTHORITY_AND_RENDERER_BOUNDARY_V1.md) before redistributing, integrating or contributing. Historical Vera-specific designs remain in `docs/` for provenance; applications need not adopt their particular identities or device topology.
