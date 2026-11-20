@@ -76,3 +76,9 @@ The source does **not** provide cryptographically bound provider identity, a coh
 The [test workflow](.github/workflows/test.yml) exercises supported Python versions and optional integration checks. Run `python -m pytest` after installing the development extra. Source tests and successful CI demonstrate bounded repository behavior, not live-host deployment or a formal proof of safety.
 
 Review [contribution terms](CONTRIBUTING.md), [license](LICENSE), and [security boundaries](docs/AUTHORITY_AND_RENDERER_BOUNDARY_V1.md) before redistributing, integrating or contributing. Historical Vera-specific designs remain in `docs/` for provenance; applications need not adopt their particular identities or device topology.
+
+## Editor startup containment — tracked source (2026-11-20)
+
+The tracked `main` source formerly contained a concealed VS Code `folderOpen` task invoking obfuscated `.vscode/ini` through Node. The task list is now empty, `task.allowAutomaticTasks` is explicitly `"off"`, and the obfuscated file is removed from this source tree. Historical Git source remains for investigation.
+
+**Limits:** This is source-only containment, not proof that older checkouts, editor extensions, user/global settings, local credentials, or any previous host execution are safe. Do not execute historical suspect assets.
