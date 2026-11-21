@@ -261,20 +261,22 @@ function writeLine(name,text,isSystem=false) {
 function setBusy(value) {
   busy=value;sendButton.disabled=value;forwardButton.disabled=value||!last;
 }
-async function ask(target,message,forwarded=false) {
+async function ask(target,message,forwardedFrom=null) {
   const body=String(message||"").trim();
   if(!body||busy)return;
   const ctx=history.slice(-10);
+  const turn={target,message:body,context:ctx};
+  if(forwardedFrom)turn.forwarded_from=forwardedFrom;
   setBusy(true);
   try {
     const reply=await fetch("/api/turn",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({target,message:body,context:ctx})
+      body:JSON.stringify(turn)
     });
     const data=await reply.json();
     if(!reply.ok)throw Error(data.error||"Local inference request failed");
-    if(!forwarded) {
+    if(!forwardedFrom) {
       writeLine("YOU",body);
       history.push({speaker:"human",text:body});
       // Do not erase a newer draft typed while the request was in flight.
@@ -283,7 +285,9 @@ async function ask(target,message,forwarded=false) {
       writeLine("FORWARDED",body);
     }
     writeLine(target.toUpperCase()+" · UNVERIFIED",data.reply);
-    history.push({speaker:target,text:data.reply});
+    // HTTP replies may be 4,000 chars; context entries are capped at 2,000.
+    // Preserve the full visible answer, but bound subsequent model context.
+    history.push({speaker:target,text:data.reply.slice(0,2000)});
     history=history.slice(-10);
     last={speaker:target,text:data.reply};
     setActivity("Received "+target.toUpperCase()+" reply", "Unverified model response. No virtual-world authority was granted.");
@@ -302,7 +306,9 @@ forwardButton.addEventListener("click",()=>{
   if(!last||busy)return;
   const to=last.speaker==="vera"?"jack":"vera";
   choose(to);
-  ask(to,"Other local model said: "+last.text.slice(0,1900),true);
+  // Preserve claimed source separately from its text, not as a natural-
+  // language authority claim; local room still treats the claim as unverified.
+  ask(to,last.text.slice(0,1900),last.speaker);
 });
 document.getElementById("clear").addEventListener("click",()=>{
   if(busy)return;
