@@ -181,16 +181,36 @@ def build_messages(target: str, msg: str, history: list[dict[str, str]]) -> list
 
 
 def local_ollama(model: str, messages: list[dict[str, str]]) -> str:
-    payload = json.dumps({"model": model, "messages": messages, "stream": False,
-                          "think": False,  # Explicitly reserve output budget for visible chat.
-                          "options": {"temperature": 0.5, "num_predict": 160,
-                                      "num_ctx": 2048}, "keep_alive": 0}).encode("utf-8")
-    req = Request("http://127.0.0.1:11434/api/chat", payload,
-                  headers={"Content-Type": "application/json"}, method="POST")
-    # Ignore proxy environment variables for this fixed loopback-only inference route.
-    with build_opener(ProxyHandler({})).open(req, timeout=75) as response:
-        result = json.load(response)
-    text = result.get("message", {}).get("content")
+    # Preserve the model's normal reasoning path when it produces visible text.
+    # A bounded second local inference is permitted ONLY when hidden reasoning
+    # exhausts the response budget and leaves no visible answer.
+    base = {"model": model, "messages": messages, "stream": False,
+            "options": {"temperature": 0.5, "num_predict": 160,
+                        "num_ctx": 2048}, "keep_alive": 0}
+    # Ignore proxy environment variables for this fixed loopback-only route.
+    opener = build_opener(ProxyHandler({}))
+
+    def infer(disable_thinking: bool = False) -> dict:
+        payload = dict(base)
+        if disable_thinking:
+            payload["think"] = False
+        req = Request("http://127.0.0.1:11434/api/chat",
+                      json.dumps(payload).encode("utf-8"),
+                      headers={"Content-Type": "application/json"}, method="POST")
+        with opener.open(req, timeout=75) as response:
+            return json.load(response)
+
+    result = infer()
+    message = result.get("message")
+    if type(message) is not dict:
+        raise ValueError("local inference returned no visible response")
+    text = message.get("content")
+    if (type(text) is not str or not text.strip()) and (
+            result.get("done") is True and result.get("done_reason") == "length"
+            and type(message.get("thinking")) is str and message["thinking"].strip()):
+        result = infer(disable_thinking=True)
+        message = result.get("message")
+        text = message.get("content") if type(message) is dict else None
     if type(text) is not str or not text.strip():
         raise ValueError("local inference returned no visible response")
     return text[:4000]

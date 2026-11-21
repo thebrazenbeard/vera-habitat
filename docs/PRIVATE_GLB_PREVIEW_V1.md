@@ -63,9 +63,12 @@ The first **real** two-model trial returned HTTP 503 from the generic Vera
 test slot. Direct Ollama diagnosis found that the local Qwen3.5 0.8B model
 spent all 160 generated tokens on hidden thinking with zero visible response.
 A new test first failed when `think` was absent from the Ollama request.
-The local-room client now explicitly sets `think:false`. The real trial then
-returned visible text from the generic Vera test model and from the separate
+The original PR36 local-room client explicitly set `think:false`, which
+restored visible text from the generic Vera test model and the separate
 private source-calculated native JACK model after one explicit forward.
+The stacked successor now preserves normal model thinking when it gives a
+visible answer, and retries once with `think:false` only after a provider-
+confirmed hidden-reasoning output-budget exhaustion.
 A second new room process restored both private model/mesh bindings and
 received another native JACK reply. No generated private text is logged here.
 

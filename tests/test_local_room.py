@@ -46,8 +46,8 @@ def http_json(base, path, method="GET", obj=None, headers=None):
         return err.code, err.headers, err.read()
 
 
-def test_local_ollama_disables_reasoning_to_preserve_visible_response(monkeypatch):
-    # qwen3.5:0.8b spent all 160 tokens on hidden reasoning without this.
+def test_local_ollama_preserves_first_visible_response_without_forced_thinking(monkeypatch):
+    # A visible default response must never trigger a second inference.
     import io
     from vera_habitat import local_room
     observed = []
@@ -65,7 +65,8 @@ def test_local_ollama_disables_reasoning_to_preserve_visible_response(monkeypatc
         {"role": "user", "content": "synthetic test"}
     ])
     assert response == "synthetic visible reply"
-    assert observed[0]["think"] is False
+    assert "think" not in observed[0]
+    assert len(observed) == 1
     assert observed[0]["stream"] is False
 
 

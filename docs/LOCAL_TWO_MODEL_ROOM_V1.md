@@ -24,10 +24,29 @@ The JACK slot now launches an isolated `python -I -B -c` subprocess using a fixe
 ## Boundaries
 
 - The listener binds **only 127.0.0.1**. Both the `Host` and `Origin` are checked for loopback. It does not accept external URLs, files, arbitrary model tags from requests, or caller-provided system prompts.
-- Generic model inference goes only to fixed `http://127.0.0.1:11434/api/chat` (proxy environment bypassed). Native JACK executes only an explicitly hash-pinned local Python source and private model in a bounded subprocess; no arbitrary route is accepted from the browser. Generic tags are validated at startup. Each inference is bounded to 160 output tokens and 75 seconds. Request body, message and history lengths are capped; responses are displayed using DOM text nodes, not model-generated HTML.
+- Generic model inference goes only to fixed `http://127.0.0.1:11434/api/chat` (proxy environment bypassed). Native JACK executes only an explicitly hash-pinned local Python source and private model in a bounded subprocess; no arbitrary route is accepted from the browser. Generic tags are validated at startup. Each local inference attempt is bounded to 160 output tokens and 75 seconds; one explicit user turn can cause **at most two local attempts** under the narrow hidden-reasoning recovery rule below. Request body, message and history lengths are capped; responses are displayed using DOM text nodes, not model-generated HTML.
 - This is **not authenticated against other local processes or a compromised browser profile**. It must not be publicly exposed, proxied, or treated as a production multi-user service. A local prompt can still influence its model, but cannot trigger tools, filesystem writes, device control, or permissions through the room.
 - Scene state is the existing `HabitatRuntime` typed simulation only: two AVATAR entities with `geometry=NOT_BOUND`, `binding=UNVERIFIED_LOCAL_MODEL`. `GET /api/scene` is read-only. Browser chat changes neither simulation revision nor external state; the model call itself is external inference but does not receive Habitat effect authority.
 - No custom traits, private memories, biometric data, images, credentials, or training examples are shipped, recorded, or sent to GitHub by this preview.
+
+## Visible response without globally disabling reasoning
+
+The Ollama slot first sends the current request **without overriding the model's
+default thinking mode**. A valid visible answer returns unchanged. Only when
+that first response is visibly empty, explicitly `done=true` with
+`done_reason=length`, and carries nonempty hidden `message.thinking`,
+Habitat retries the same local model and messages **once** with `think:false`
+to reserve the second 160-token budget for a visible response. Another empty
+answer fails closed; missing/malformed provider metadata and ordinary HTTP
+failures do not trigger repeated calls. Nothing is autonomously forwarded to
+the other slot. The user's single explicit send can therefore cause two
+local inference calls, with additional latency and compute cost; no private
+text is added to CLI arguments or GitHub records by this recovery path.
+
+This is visibility/reliability recovery, not evidence that a model reasons
+better, that hidden reasoning was experienced, or that a canonical Vera
+identity or private memory was loaded. A generic model can still give a
+poor, inaccurate or misleading answer.
 
 ## Optional real-browser acceptance probe
 
