@@ -103,3 +103,40 @@ not part of the Habitat Python package or production runtime.
 3. **Habitat interaction:** Add vetted local or authenticated browser GLB renderer/animation, bind each verified model to its verified avatar, add speech/gesture routing if wanted, carry out real browser usability and privacy tests, and obtain scoped deployment authority before persistent hosting or remote exposure.
 
 Tests: `python -m pytest tests/test_local_room.py`. These include origin rejection, request bounds, neutral fake model exchanges, the native JACK dual-hash negative controls, read-only projection, and XSS text handling. Live local smoke tests may use generic Ollama tags; they are not demonstrations of the eventual two personal AI models.
+
+
+## Explicit, bounded forwarding attribution (source candidate)
+
+The browser sends a normal human request with the legacy three-key `target`,
+`message`, `context` schema. Only the user-clicked **Pass last reply to
+other slot** action adds a distinct `forwarded_from` field (`vera` or
+`jack`); it sends the forwarded text itself, not a free-form prefix
+claiming a model has spoken. The server checks that the declared slot differs
+from the recipient and matches the most recent context speaker, with the
+forwarded text matching that last observation (up to 1,900 characters).
+Invalid, self-directed, unknown, or mismatched claims are rejected before
+inference. Older human clients remain accepted.
+
+The recipient receives the forwarded message under an ordinary `user`
+role labeled `Claimed VERA/JACK slot forward (unverified)`. A browser request
+cannot authenticate another model or mint a system, developer, identity,
+consent, correction-authority, or effect role. Other context items still
+represent caller-provided claims; the server does not reconstruct or certify
+a complete conversation. Synthetic HTTP negative tests inspect the actual
+messages that would reach a model.
+
+A separate boundary was exposed by the real browser: local model responses
+may be up to 4,000 characters, but individual subsequent context entries
+are limited to 2,000. The browser now keeps the **full visible reply** while
+truncating only the model history sent on later turns; an explicit forward
+takes up to the first 1,900 characters. This is documented information loss,
+not semantic summarization or trustworthy memory. The real Edge test
+`python -B tests/manual_sandbox_long_forward.py` reproduces the previous
+failure with a synthetic reply longer than 2,000 characters and verifies
+the corrected bounded transport and claimed-source labeling without
+loading private identity data, real models, or external URLs.
+
+These measures improve transport and role separation, **not** actual
+semantic fidelity: a local model can still misunderstand a correction or
+treat claimed source text as an instruction. Qualified multi-turn behavioral
+evaluation remains a separate HOLD.

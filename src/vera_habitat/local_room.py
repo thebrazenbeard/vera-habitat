@@ -147,9 +147,11 @@ def make_scene() -> str:
     return render_scene_json(world.snapshot())
 
 
-def validate_turn(obj: object) -> tuple[str, str, list[dict[str, str]]]:
-    if type(obj) is not dict or set(obj) != {"target", "message", "context"}:
-        raise ValueError("expected exactly target, message, context")
+def validate_turn(obj: object) -> tuple[str, str, list[dict[str, str]], str | None]:
+    if type(obj) is not dict or set(obj) not in (
+            {"target", "message", "context"},
+            {"target", "message", "context", "forwarded_from"}):
+        raise ValueError("expected target, message, context and optional forwarded_from")
     target, msg, history = obj["target"], obj["message"], obj["context"]
     if type(target) is not str or target not in SYSTEM:
         raise ValueError("unknown local slot")
@@ -164,10 +166,19 @@ def validate_turn(obj: object) -> tuple[str, str, list[dict[str, str]]]:
                 or type(item["text"]) is not str
                 or not 0 < len(item["text"]) <= MAX_MESSAGE):
             raise ValueError("invalid context item")
-    return target, msg.strip(), history
+    source = obj.get("forwarded_from")
+    if "forwarded_from" in obj:
+        # A browser-supplied slot claim is never authenticated model identity.
+        # Require only a consistent, current, bounded last context observation.
+        if (type(source) is not str or source not in SYSTEM or source == target
+                or not history or history[-1]["speaker"] != source
+                or msg.strip() != history[-1]["text"][:1900].strip()):
+            raise ValueError("forwarded source claim is inconsistent")
+    return target, msg.strip(), history, source
 
 
-def build_messages(target: str, msg: str, history: list[dict[str, str]]) -> list[dict[str, str]]:
+def build_messages(target: str, msg: str, history: list[dict[str, str]],
+                   forwarded_from: str | None = None) -> list[dict[str, str]]:
     messages = [{"role": "system", "content": SYSTEM[target]}]
     for item in history:
         speaker = item["speaker"]
@@ -176,7 +187,9 @@ def build_messages(target: str, msg: str, history: list[dict[str, str]]) -> list
         else:
             label = "Human" if speaker == "human" else speaker.upper() + " slot (unverified)"
             messages.append({"role": "user", "content": label + ": " + item["text"]})
-    messages.append({"role": "user", "content": "Human or forwarded message: " + msg})
+    label = ("Human message: " if forwarded_from is None else
+             "Claimed " + forwarded_from.upper() + " slot forward (unverified): ")
+    messages.append({"role": "user", "content": label + msg})
     return messages
 
 
@@ -394,12 +407,12 @@ class RoomHandler(BaseHTTPRequestHandler):
             return self.send(413, {"error": "request too large"})
         try:
             obj = json.loads(self.rfile.read(n).decode("utf-8"))
-            target, msg, history = validate_turn(obj)
+            target, msg, history, source = validate_turn(obj)
         except (UnicodeError, ValueError, TypeError, json.JSONDecodeError):
             return self.send(400, {"error": "invalid turn"})
         try:
             reply = self.server.responder(self.server.models[target],
-                                          build_messages(target, msg, history))
+                                          build_messages(target, msg, history, source))
         except (OSError, ValueError, TimeoutError, URLError, subprocess.SubprocessError):
             return self.send(503, {"error": "local inference unavailable"})
         if type(reply) is not str or not reply:
