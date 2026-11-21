@@ -160,9 +160,9 @@ def test_native_jack_sample_runs_only_pinned_local_source(tmp_path):
     source = tmp_path / "jack_model.py"
     model = tmp_path / "private_test_model.json"
     source.write_text(
-        "import sys\n"
-        "i=sys.argv.index('--question')\n"
-        "print('synthetic:' + str(len(sys.argv[i+1])))\n",
+        "def validate_model(model): assert model == {}\n"
+        "def generate(model, question, seed=1, max_tokens=45):\n"
+        "    return 'synthetic:' + str(len(question))\n",
         encoding="utf-8",
     )
     model.write_text("{}", encoding="utf-8")
@@ -202,3 +202,33 @@ def test_native_jack_missing_file_rejected(tmp_path):
     with pytest.raises(OSError):
         native_jack_sample(str(source), "0" * 64, str(source), "0" * 64,
                            [{"role": "user", "content": "Hi"}])
+
+def test_native_jack_conversation_is_not_exposed_in_process_arguments(tmp_path, monkeypatch):
+    """Process inspection must not reveal the user's conversational text."""
+    import hashlib
+    from types import SimpleNamespace
+    from vera_habitat import local_room
+
+    source = tmp_path / "jack_model.py"
+    model = tmp_path / "private_model.json"
+    source.write_text("def load_model(p): return {}\ndef generate(*a, **kw): return 'ok'\n",
+                      encoding="utf-8")
+    model.write_text("{}", encoding="utf-8")
+    source_sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    model_sha = hashlib.sha256(model.read_bytes()).hexdigest()
+    phrase = "SYNTHETIC_PRIVATE_CANARY_NEVER_IN_ARGV"
+    invocations = []
+
+    def spy(args, **kwargs):
+        invocations.append((args, kwargs))
+        assert phrase not in " ".join(map(str, args)), "conversation leaked into process arguments"
+        assert kwargs.get("input") == phrase, "conversation not sent over stdin"
+        return SimpleNamespace(stdout="synthetic answer")
+
+    monkeypatch.setattr(local_room.subprocess, "run", spy)
+    answer = local_room.native_jack_sample(
+        str(source), source_sha, str(model), model_sha,
+        [{"role": "user", "content": phrase}],
+    )
+    assert answer == "synthetic answer"
+    assert len(invocations) == 1

@@ -182,6 +182,33 @@ def local_ollama(model: str, messages: list[dict[str, str]]) -> str:
     return text[:4000]
 
 
+# Constant, audited child script. The user prompt is read from stdin; no text in argv.
+# The child re-verifies both pinned file digests before executing trusted source
+# or decoding the separately stored private JACK model.
+JACK_STDIN_DRIVER = """
+import hashlib
+import json
+from pathlib import Path
+import sys
+
+source, model_path, expected_source, expected_model = sys.argv[1:5]
+source_bytes = Path(source).read_bytes()
+model_bytes = Path(model_path).read_bytes()
+if hashlib.sha256(source_bytes).hexdigest() != expected_source:
+    raise SystemExit("native JACK source digest changed")
+if hashlib.sha256(model_bytes).hexdigest() != expected_model:
+    raise SystemExit("private JACK model digest changed")
+scope = {"__name__": "jack_native_private_loader", "__file__": source}
+exec(compile(source_bytes, source, "exec"), scope)
+model = json.loads(model_bytes)
+scope["validate_model"](model)
+question = sys.stdin.read(4097)
+if len(question) > 4096:
+    raise SystemExit("question too long")
+print(scope["generate"](model, question, seed=1, max_tokens=45))
+"""
+
+
 def native_jack_sample(source: str, expected_sha256: str,
                        model_path: str, expected_model_sha256: str,
                        messages: list[dict[str, str]]) -> str:
@@ -202,10 +229,9 @@ def native_jack_sample(source: str, expected_sha256: str,
         raise ValueError("JACK model artifact must stay outside Git")
     question = messages[-1]["content"] if messages else ""
     result = subprocess.run(
-        [sys.executable, "-I", "-B", str(src), "sample",
-         "--model", str(model), "--question", question,
-         "--seed", "1", "--max-tokens", "45"],
-        stdin=subprocess.DEVNULL, capture_output=True, text=True,
+        [sys.executable, "-I", "-B", "-c", JACK_STDIN_DRIVER,
+         str(src), str(model), expected_sha256, expected_model_sha256],
+        input=question, capture_output=True, text=True,
         encoding="utf-8", errors="replace", timeout=25, check=True,
     )
     reply = result.stdout.strip()
