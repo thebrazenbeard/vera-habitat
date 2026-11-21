@@ -29,6 +29,32 @@ The JACK slot then runs `python -I -B <vetted-source> sample` in an isolated, bo
 - Scene state is the existing `HabitatRuntime` typed simulation only: two AVATAR entities with `geometry=NOT_BOUND`, `binding=UNVERIFIED_LOCAL_MODEL`. `GET /api/scene` is read-only. Browser chat changes neither simulation revision nor external state; the model call itself is external inference but does not receive Habitat effect authority.
 - No custom traits, private memories, biometric data, images, credentials, or training examples are shipped, recorded, or sent to GitHub by this preview.
 
+## Optional real-browser acceptance probe
+
+The Python/HTTP tests do not establish whether the browser controls actually work.
+The optional `tests/manual_room_browser_smoke.py` starts a disposable loopback RoomServer
+with **synthetic responders only**; the paired `tests/manual_room_browser_smoke.cjs`
+drives a real local Chromium/Edge browser through an explicitly supplied Puppeteer module.
+It installs nothing and never loads any actual JACK model, Vera model, private file or transcript.
+
+On a test workstation with Node.js, Puppeteer and a local Chromium/Edge executable:
+
+- Set `HABITAT_BROWSER_BINARY` to the browser executable.
+- Set `PUPPETEER_MODULE` to the **already installed** Puppeteer package path (or omit
+  this variable if `require("puppeteer")` resolves normally).
+- Run `python -B tests/manual_room_browser_smoke.py`.
+- Run `python -B tests/manual_room_browser_smoke.py --negative-control` to verify
+  the probe detects deliberately unsafe HTML parsing. The negative control runs
+  **only synthetic data on a short-lived localhost server**, never real models.
+
+The browser probe checks manual send, one-step model forwarding, no automatic model
+loop, rendering untrusted model text as text rather than executing HTML, mobile-width
+layout, transcript clearing, and absence of browser JavaScript exceptions. The negative
+control intentionally introduces a test-only unsafe render seam and expects the
+browser probe to reject it. Passing these probes is not a penetration test or proof
+of complete browser/device support. The **Puppeteer/Edge dependency is test-only**,
+not part of the Habitat Python package or production runtime.
+
 ## Completion blockers for the requested outcome
 
 1. **JACK:** A first from-scratch analytic model exists and can be locally sampled, but its source corpus is partial and its responses are not yet fluent or Patrick-qualified. Expand/authenticate consented sources, conduct withheld-reply resemblance/quality tests, and distinguish the native analytic route from any future neural choice.
