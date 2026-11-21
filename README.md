@@ -58,7 +58,7 @@ An accepted movement changes this *simulated* state only. Reusing a proposal act
 
 ## Local two-slot chat preview (opt-in)
 
-A **manually started, loopback-only** browser preview can send and forward messages between two model slots: local Ollama test tags, or an explicitly selected, hash-pinned native JACK analytic model in the JACK slot. It uses Habitat's detached two-entity simulation projection, but shows placeholders rather than 3D character models; it neither trains JACK nor authenticates Vera. The only configured destination is localhost. There is no remote hosting, automatic conversation, persistent room transcript, or authorization for external effects.
+A **manually started, loopback-only** browser preview can send and forward messages between two model slots: local Ollama test tags, or an explicitly selected, hash-pinned native JACK analytic model in the JACK slot. It uses Habitat's detached two-entity simulation projection, and defaults to placeholders; only separately configured experimental GLB files can replace them. No preview is an approved character model, and neither model is trained or authenticated by this feature. The only configured destination is localhost. There is no remote hosting, automatic conversation, persistent room transcript, or authorization for external effects.
 
 Run the new vera-habitat-local-room console script with separately selected installed local model tags after a local editable install. See [Local two-model room](docs/LOCAL_TWO_MODEL_ROOM_V1.md) for limits, tests and the blockers to real JACK, finished character geometry, and complete user interaction.
 
@@ -66,7 +66,9 @@ Run the new vera-habitat-local-room console script with separately selected inst
 
 Open `http://127.0.0.1:8765/sandbox` after starting the existing local-room server. The locally bundled Three.js renderer creates a walkable 3D room with a third-person camera, interactive objects and two unverified model stations. Controls: WASD / arrow keys, mouse drag, E to interact, and click nearby objects. Model conversation and one-step forwarding reuse the original localhost `/api/turn` endpoint. The placeholder forms are NOT approved avatars or live shared-world identities.
 
-See [Interactive sandbox V1](docs/INTERACTIVE_SANDBOX_V1.md) for engine custody, offline wheel assets, verified behavior and release limits. This is not Unreal Engine; it is a lightweight browser 3D engine that can later accept approved GLB exports.
+See [Interactive sandbox V1](docs/INTERACTIVE_SANDBOX_V1.md) for engine custody, offline wheel assets, verified behavior and release limits. This is not Unreal Engine; it is a lightweight browser 3D engine.
+
+**Opt-in private GLB preview (source candidate):** [Private GLB Preview V1](docs/PRIVATE_GLB_PREVIEW_V1.md) adds SHA-256-bound local experimental geometry to existing model stations. Neither private assets nor model identities are bundled, approved or deployed.
 
 ## Optional research and integration surfaces
 

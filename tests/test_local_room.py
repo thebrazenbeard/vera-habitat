@@ -46,6 +46,29 @@ def http_json(base, path, method="GET", obj=None, headers=None):
         return err.code, err.headers, err.read()
 
 
+def test_local_ollama_disables_reasoning_to_preserve_visible_response(monkeypatch):
+    # qwen3.5:0.8b spent all 160 tokens on hidden reasoning without this.
+    import io
+    from vera_habitat import local_room
+    observed = []
+
+    class LocalOnlyOpener:
+        def open(self, request, timeout):
+            payload = json.loads(request.data)
+            observed.append(payload)
+            return io.BytesIO(json.dumps({
+                "message": {"content": "synthetic visible reply"}
+            }).encode("utf-8"))
+
+    monkeypatch.setattr(local_room, "build_opener", lambda _proxy: LocalOnlyOpener())
+    response = local_room.local_ollama("qwen3.5:0.8b", [
+        {"role": "user", "content": "synthetic test"}
+    ])
+    assert response == "synthetic visible reply"
+    assert observed[0]["think"] is False
+    assert observed[0]["stream"] is False
+
+
 def test_two_entities_read_only_projection(room):
     base, calls = room
     status, _, raw = http_json(base, "/api/scene")

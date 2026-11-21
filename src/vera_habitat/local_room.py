@@ -13,6 +13,7 @@ from typing import Callable
 from urllib.error import URLError
 from urllib.request import ProxyHandler, Request, build_opener
 
+from .asset_preview import preview_asset_bytes
 from .model import Entity, Position3
 from .rendering import render_scene_json
 from .runtime import HabitatRuntime
@@ -28,6 +29,9 @@ SANDBOX_ASSETS = {
     "/sandbox/sandbox.js": ("sandbox.js", "text/javascript; charset=utf-8"),
     "/sandbox/vendor/three.module.js": ("vendor/three.module.js", "text/javascript; charset=utf-8"),
     "/sandbox/vendor/three.core.js": ("vendor/three.core.js", "text/javascript; charset=utf-8"),
+    "/sandbox/vendor/loaders/GLTFLoader.js": ("vendor/loaders/GLTFLoader.js", "text/javascript; charset=utf-8"),
+    "/sandbox/vendor/utils/BufferGeometryUtils.js": ("vendor/utils/BufferGeometryUtils.js", "text/javascript; charset=utf-8"),
+    "/sandbox/vendor/utils/SkeletonUtils.js": ("vendor/utils/SkeletonUtils.js", "text/javascript; charset=utf-8"),
     "/sandbox/vendor/LICENSE": ("vendor/LICENSE", "text/plain; charset=utf-8"),
 }
 
@@ -178,6 +182,7 @@ def build_messages(target: str, msg: str, history: list[dict[str, str]]) -> list
 
 def local_ollama(model: str, messages: list[dict[str, str]]) -> str:
     payload = json.dumps({"model": model, "messages": messages, "stream": False,
+                          "think": False,  # Explicitly reserve output budget for visible chat.
                           "options": {"temperature": 0.5, "num_predict": 160,
                                       "num_ctx": 2048}, "keep_alive": 0}).encode("utf-8")
     req = Request("http://127.0.0.1:11434/api/chat", payload,
@@ -250,10 +255,20 @@ def native_jack_sample(source: str, expected_sha256: str,
 
 
 class RoomServer(HTTPServer):
-    def __init__(self, models: dict[str, str], responder: Callable = local_ollama, port: int = 8765):
+    def __init__(self, models: dict[str, str], responder: Callable = local_ollama,
+                 port: int = 8765,
+                 preview_assets: dict[str, tuple[str, str]] | None = None):
         if set(models) != set(SYSTEM):
             raise ValueError("exactly vera and jack model tags required")
         self.models = {name: validate_model(tag) for name, tag in models.items()}
+        self.preview_assets: dict[str, tuple[Path, str]] = {}
+        for slot, binding in (preview_assets or {}).items():
+            if slot not in SYSTEM or type(binding) is not tuple or len(binding) != 2:
+                raise ValueError("unknown or malformed preview slot")
+            path, digest = binding
+            resolved = Path(path).resolve(strict=True)
+            preview_asset_bytes(resolved, digest)  # Reject before binding the port.
+            self.preview_assets[slot] = (resolved, digest)
         self.responder = responder
         self.scene = make_scene()
         super().__init__(("127.0.0.1", port), RoomHandler)
@@ -305,9 +320,35 @@ class RoomHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_preview_glb(self, slot: str) -> None:
+        binding = self.server.preview_assets.get(slot)
+        if binding is None:
+            return self.send(404, {"error": "preview not configured"})
+        try:
+            body = preview_asset_bytes(*binding)
+        except (OSError, ValueError):
+            return self.send(503, {"error": "preview asset unavailable or changed"})
+        self.send_response(200)
+        self.send_header("Content-Type", "model/gltf-binary")
+        self.send_header("Content-Security-Policy", "default-src 'none'")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self) -> None:
         if not self.allowed_request():
             return self.send(403, {"error": "loopback origin required"})
+        if self.path == "/api/preview-assets":
+            return self.send(200, {"previews": [
+                {"slot": slot, "url": "/sandbox/previews/" + slot + ".glb",
+                 "sha256": binding[1], "approval": "UNVERIFIED_EXPERIMENTAL_PREVIEW"}
+                for slot, binding in sorted(self.server.preview_assets.items())
+            ]})
+        if self.path in ("/sandbox/previews/vera.glb",
+                         "/sandbox/previews/jack.glb"):
+            return self.send_preview_glb(self.path.split("/")[-1][:-4])
         if self.path in SANDBOX_ASSETS:
             return self.send_sandbox_asset(*SANDBOX_ASSETS[self.path])
         if self.path == "/":
@@ -356,6 +397,9 @@ def main() -> None:
     parser.add_argument("--jack-native-source", help="Trusted local jack_model.py source file")
     parser.add_argument("--jack-source-sha256", help="Exact vetted SHA-256 of jack_model.py")
     parser.add_argument("--jack-model-sha256", help="Expected SHA-256 of private JACK model JSON")
+    for slot in ("vera", "jack"):
+        parser.add_argument("--" + slot + "-preview-glb", help="Private experimental GLB; no canon approval")
+        parser.add_argument("--" + slot + "-preview-sha256", help="Exact SHA-256 of preview GLB")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
@@ -391,10 +435,22 @@ def main() -> None:
         if args.jack_native_source or args.jack_source_sha256 or args.jack_model_sha256:
             parser.error("native JACK source options require --jack-native-model")
         responder, jack_tag = local_ollama, args.jack_model
-    server = RoomServer({"vera": args.vera_model, "jack": jack_tag},
-                        responder=responder, port=args.port)
+    preview_assets = {}
+    for slot in ("vera", "jack"):
+        path = getattr(args, slot + "_preview_glb")
+        digest = getattr(args, slot + "_preview_sha256")
+        if bool(path) != bool(digest):
+            parser.error("preview GLB requires its matching SHA-256")
+        if path:
+            preview_assets[slot] = (path, digest)
+    try:
+        server = RoomServer({"vera": args.vera_model, "jack": jack_tag},
+                            responder=responder, port=args.port,
+                            preview_assets=preview_assets)
+    except (OSError, ValueError) as exc:
+        parser.error("experimental preview invalid or unavailable: " + str(exc))
     print("Local room: http://127.0.0.1:" + str(server.server_port)
-          + " (unverified models; no 3D geometry bound)")
+          + " (unverified models; opt-in unapproved geometry only)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
