@@ -153,3 +153,52 @@ def test_no_external_url_or_browser_storage_apis():
     assert "localStorage" not in HTML
     assert "sessionStorage" not in HTML
     assert "https://" not in HTML
+
+def test_native_jack_sample_runs_only_pinned_local_source(tmp_path):
+    import hashlib
+    from vera_habitat.local_room import native_jack_sample
+    source = tmp_path / "jack_model.py"
+    model = tmp_path / "private_test_model.json"
+    source.write_text(
+        "import sys\n"
+        "i=sys.argv.index('--question')\n"
+        "print('synthetic:' + str(len(sys.argv[i+1])))\n",
+        encoding="utf-8",
+    )
+    model.write_text("{}", encoding="utf-8")
+    sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    modelsha = hashlib.sha256(model.read_bytes()).hexdigest()
+    result = native_jack_sample(str(source), sha, str(model), modelsha,
+                                [{"role": "user", "content": "Hello"}])
+    assert result == "synthetic:5"
+    with pytest.raises(ValueError, match="model hash mismatch"):
+        native_jack_sample(str(source), sha, str(model), "0" * 64,
+                           [{"role": "user", "content": "Hello"}])
+    with pytest.raises(ValueError, match="hash mismatch"):
+        native_jack_sample(str(source), "0" * 64, str(model), modelsha,
+                           [{"role": "user", "content": "Hello"}])
+
+
+def test_native_jack_model_must_be_outside_git(tmp_path):
+    import hashlib
+    from vera_habitat.local_room import native_jack_sample
+    source = tmp_path / "jack_model.py"
+    source.write_text("print('a')", encoding="utf-8")
+    sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    git_tree = tmp_path / "repo"
+    git_tree.mkdir()
+    (git_tree / ".git").mkdir()
+    model = git_tree / "private.json"
+    model.write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="outside Git"):
+        native_jack_sample(str(source), sha, str(model),
+                           hashlib.sha256(model.read_bytes()).hexdigest(),
+                           [{"role": "user", "content": "Hi"}])
+
+
+def test_native_jack_missing_file_rejected(tmp_path):
+    from vera_habitat.local_room import native_jack_sample
+    source = tmp_path / "jack_model.py"
+    with pytest.raises(OSError):
+        native_jack_sample(str(source), "0" * 64, str(source), "0" * 64,
+                           [{"role": "user", "content": "Hi"}])

@@ -58,7 +58,7 @@ An accepted movement changes this *simulated* state only. Reusing a proposal act
 
 ## Local two-slot chat preview (opt-in)
 
-A **manually started, loopback-only** browser preview can send and forward messages between two independently configured *local Ollama model slots*. It uses Habitat's detached two-entity simulation projection, but shows placeholders rather than 3D character models; it neither trains JACK nor authenticates Vera. The only configured destination is localhost. There is no remote hosting, automatic conversation, persistent room transcript, or authorization for external effects.
+A **manually started, loopback-only** browser preview can send and forward messages between two model slots: local Ollama test tags, or an explicitly selected, hash-pinned native JACK analytic model in the JACK slot. It uses Habitat's detached two-entity simulation projection, but shows placeholders rather than 3D character models; it neither trains JACK nor authenticates Vera. The only configured destination is localhost. There is no remote hosting, automatic conversation, persistent room transcript, or authorization for external effects.
 
 Run the new vera-habitat-local-room console script with separately selected installed local model tags after a local editable install. See [Local two-model room](docs/LOCAL_TWO_MODEL_ROOM_V1.md) for limits, tests and the blockers to real JACK, finished character geometry, and complete user interaction.
 

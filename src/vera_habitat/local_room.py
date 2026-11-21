@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+from pathlib import Path
+import subprocess
+import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import re
@@ -41,7 +45,7 @@ No saved transcript, automatic agent loop, remote access, or physical actions.</
 <main><section><div class="round" aria-hidden="true"></div><h2>Vera slot</h2>
 <small>Unverified local model candidate</small></section>
 <section><div class="round" aria-hidden="true"></div><h2>JACK slot</h2>
-<small>Untrained placeholder until a qualified JACK model exists</small></section></main>
+<small>Unverified native analytic JACK or generic local placeholder; neither is persona-qualified</small></section></main>
 <div id="log" role="log" aria-live="polite"></div>
 <label for="message">Message to selected local model</label>
 <textarea id="message" rows="3" maxlength="2000"></textarea>
@@ -178,6 +182,38 @@ def local_ollama(model: str, messages: list[dict[str, str]]) -> str:
     return text[:4000]
 
 
+def native_jack_sample(source: str, expected_sha256: str,
+                       model_path: str, expected_model_sha256: str,
+                       messages: list[dict[str, str]]) -> str:
+    """Opt-in, hash-gated JACK native CLI inference; no private model data is returned."""
+    src = Path(source).resolve(strict=True)
+    model = Path(model_path).resolve(strict=True)
+    if src.name != "jack_model.py" or not src.is_file() or not model.is_file():
+        raise ValueError("native JACK needs its source and private model file")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
+        raise ValueError("native JACK source SHA-256 required")
+    if hashlib.sha256(src.read_bytes()).hexdigest() != expected_sha256:
+        raise ValueError("native JACK source hash mismatch")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_model_sha256):
+        raise ValueError("native JACK model SHA-256 required")
+    if hashlib.sha256(model.read_bytes()).hexdigest() != expected_model_sha256:
+        raise ValueError("native JACK model hash mismatch")
+    if any((parent / ".git").exists() for parent in (model.parent, *model.parents)):
+        raise ValueError("JACK model artifact must stay outside Git")
+    question = messages[-1]["content"] if messages else ""
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", str(src), "sample",
+         "--model", str(model), "--question", question,
+         "--seed", "1", "--max-tokens", "45"],
+        stdin=subprocess.DEVNULL, capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=25, check=True,
+    )
+    reply = result.stdout.strip()
+    if not reply:
+        raise ValueError("native JACK generated an empty response")
+    return reply[:4000]
+
+
 class RoomServer(HTTPServer):
     def __init__(self, models: dict[str, str], responder: Callable = local_ollama, port: int = 8765):
         if set(models) != set(SYSTEM):
@@ -248,7 +284,7 @@ class RoomHandler(BaseHTTPRequestHandler):
         try:
             reply = self.server.responder(self.server.models[target],
                                           build_messages(target, msg, history))
-        except (OSError, ValueError, TimeoutError, URLError):
+        except (OSError, ValueError, TimeoutError, URLError, subprocess.SubprocessError):
             return self.send(503, {"error": "local inference unavailable"})
         if type(reply) is not str or not reply:
             return self.send(503, {"error": "local inference unavailable"})
@@ -259,12 +295,49 @@ class RoomHandler(BaseHTTPRequestHandler):
 def main() -> None:
     parser = argparse.ArgumentParser(description="Opt-in, loopback-only local two-model room")
     parser.add_argument("--vera-model", required=True, help="Local Ollama tag; not canonical Vera")
-    parser.add_argument("--jack-model", required=True, help="Local Ollama tag; not trained JACK")
+    jack = parser.add_mutually_exclusive_group(required=True)
+    jack.add_argument("--jack-model", help="Generic local Ollama test tag; not JACK")
+    jack.add_argument("--jack-native-model", help="Absolute private JACK analytic JSON path")
+    parser.add_argument("--jack-native-source", help="Trusted local jack_model.py source file")
+    parser.add_argument("--jack-source-sha256", help="Exact vetted SHA-256 of jack_model.py")
+    parser.add_argument("--jack-model-sha256", help="Expected SHA-256 of private JACK model JSON")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
         parser.error("port must be between 1024 and 65535")
-    server = RoomServer({"vera": args.vera_model, "jack": args.jack_model}, port=args.port)
+    if args.jack_native_model:
+        if not args.jack_native_source or not args.jack_source_sha256 or not args.jack_model_sha256:
+            parser.error("native JACK requires source, source SHA-256 and private model SHA-256")
+        source, source_sha, model_file, model_sha = (
+            args.jack_native_source, args.jack_source_sha256,
+            args.jack_native_model, args.jack_model_sha256)
+        # Fail before binding a port if source/model custody is not qualified.
+        try:
+            src = Path(source).resolve(strict=True)
+            path = Path(model_file).resolve(strict=True)
+            if src.name != "jack_model.py" or not src.is_file() or not path.is_file():
+                raise ValueError("invalid native JACK source/model path")
+            if not re.fullmatch(r"[0-9a-f]{64}", source_sha):
+                raise ValueError("invalid JACK source SHA-256")
+            if hashlib.sha256(src.read_bytes()).hexdigest() != source_sha:
+                raise ValueError("JACK source SHA-256 mismatch")
+            if not re.fullmatch(r"[0-9a-f]{64}", model_sha):
+                raise ValueError("invalid private JACK model SHA-256")
+            if hashlib.sha256(path.read_bytes()).hexdigest() != model_sha:
+                raise ValueError("private JACK model SHA-256 mismatch")
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
+        def responder(tag: str, messages: list[dict[str, str]]) -> str:
+            if tag == "jack-native-analytic:v1":
+                return native_jack_sample(source, source_sha, model_file, model_sha, messages)
+            return local_ollama(tag, messages)
+        jack_tag = "jack-native-analytic:v1"
+    else:
+        if args.jack_native_source or args.jack_source_sha256 or args.jack_model_sha256:
+            parser.error("native JACK source options require --jack-native-model")
+        responder, jack_tag = local_ollama, args.jack_model
+    server = RoomServer({"vera": args.vera_model, "jack": jack_tag},
+                        responder=responder, port=args.port)
     print("Local room: http://127.0.0.1:" + str(server.server_port)
           + " (unverified models; no 3D geometry bound)")
     try:
