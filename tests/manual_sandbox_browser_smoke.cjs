@@ -23,6 +23,13 @@ page.on("request",req=>{
 await page.goto(base+"/sandbox",{waitUntil:"domcontentloaded",timeout:20000});
 await page.waitForFunction(()=>document.querySelector("#world-status")?.dataset.state==="ready",
    {timeout:20000});
+if (process.env.HABITAT_PREVIEW_VERA_GLB) {
+  await page.waitForFunction(() =>
+    document.querySelector("#tag-vera")?.textContent.includes("EXPERIMENTAL GLB"),
+    {timeout:20000});
+  const label=await page.$eval("#tag-vera",e=>e.textContent);
+  if(!label.includes("NOT APPROVED")) throw Error("CANONICAL_PREVIEW_LABEL_MISSING");
+}
 await page.waitForFunction(()=>document.querySelector("#world-canvas").width>0
   && document.querySelector("#world-canvas").height>0,{timeout:10000});
 const canvasSize=await page.$eval("#world-canvas",c=>({width:c.width,height:c.height}));

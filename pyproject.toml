@@ -25,7 +25,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-"vera_habitat" = ["sandbox_assets/*.html", "sandbox_assets/*.js", "sandbox_assets/vendor/*.js", "sandbox_assets/vendor/LICENSE"]
+"vera_habitat" = ["sandbox_assets/*.html", "sandbox_assets/*.js", "sandbox_assets/vendor/*.js", "sandbox_assets/vendor/loaders/*.js", "sandbox_assets/vendor/utils/*.js", "sandbox_assets/vendor/LICENSE"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

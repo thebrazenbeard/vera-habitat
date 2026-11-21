@@ -16,7 +16,14 @@ def run():
     def respond(model,messages):
         calls.append(model)
         return "synthetic fake JACK reply" if model.startswith("fake-jack") else "synthetic fake Vera reply"
-    room=RoomServer({"vera":"fake-vera:dev","jack":"fake-jack:dev"},responder=respond,port=0)
+    previews = {}
+    if os.getenv("HABITAT_PREVIEW_VERA_GLB"):
+        previews["vera"] = (
+            os.environ["HABITAT_PREVIEW_VERA_GLB"],
+            os.environ["HABITAT_PREVIEW_VERA_SHA256"],
+        )
+    room=RoomServer({"vera":"fake-vera:dev","jack":"fake-jack:dev"},
+                    responder=respond,port=0,preview_assets=previews)
     thread=Thread(target=room.serve_forever,daemon=True);thread.start()
     try:
         url=f"http://127.0.0.1:{room.server_port}"

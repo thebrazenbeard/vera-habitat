@@ -1,4 +1,5 @@
 import * as THREE from "./vendor/three.module.js";
+import { GLTFLoader } from "./vendor/loaders/GLTFLoader.js";
 
 "use strict";
 // Browser-only exploratory geometry. No geometry, pose, or interaction is authoritative.
@@ -361,6 +362,51 @@ new ResizeObserver(resize).observe(canvas);
 window.addEventListener("resize",resize);
 resize();
 choose("vera");
+
+// Private preview assets are explicit, hash-gated by the localhost server.
+// A loaded mesh is a visual *candidate*, never canonical identity or permission.
+async function loadOptInPreviews() {
+  try {
+    const response = await fetch("/api/preview-assets", {cache: "no-store"});
+    if (!response.ok) return;
+    const payload = await response.json();
+    if (!Array.isArray(payload.previews)) return;
+    const loader = new GLTFLoader();
+    for (const binding of payload.previews) {
+      const id = binding.slot;
+      if (!(id === "vera" || id === "jack") ||
+          binding.approval !== "UNVERIFIED_EXPERIMENTAL_PREVIEW" ||
+          binding.url !== "/sandbox/previews/" + id + ".glb") continue;
+      loader.load(binding.url, gltf => {
+        const root = gltf.scene;
+        if (!root) return;
+        const bounds = new THREE.Box3().setFromObject(root);
+        const extent = bounds.getSize(new THREE.Vector3());
+        const largest = Math.max(extent.x, extent.y, extent.z);
+        if (!Number.isFinite(largest) || largest <= 0) return;
+        const scale = 2.6 / largest;
+        root.scale.multiplyScalar(scale);
+        bounds.setFromObject(root);
+        const center = bounds.getCenter(new THREE.Vector3());
+        root.position.set(-center.x, 0.24 - bounds.min.y, -center.z);
+        const station = stations[id];
+        station.group.add(root);
+        root.traverse(object => {if (object.isMesh) pickTargets.push(object);});
+        station.body.visible = false;
+        station.head.visible = false;
+        station.halo.visible = false;
+        labels[id].textContent = id.toUpperCase() + " · EXPERIMENTAL GLB · NOT APPROVED";
+        status.textContent = "3D ready · private experimental " + id.toUpperCase() + " mesh loaded (unapproved)";
+        status.dataset.state = "ready";
+      }, undefined, () => {
+        status.textContent = "3D ready · experimental GLB unavailable; placeholder retained";
+      });
+    }
+  } catch (_) {
+    status.textContent = "3D ready · experimental preview metadata unavailable";
+  }
+}
+loadOptInPreviews();
 function frame(now) {
   const delta=Math.min(.06,(now-lastElapsed)/1000);lastElapsed=now;
   let f=0,s=0;
