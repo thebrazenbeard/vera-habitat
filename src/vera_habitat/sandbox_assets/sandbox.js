@@ -277,6 +277,8 @@ async function ask(target,message,forwarded=false) {
     if(!forwarded) {
       writeLine("YOU",body);
       history.push({speaker:"human",text:body});
+      // Do not erase a newer draft typed while the request was in flight.
+      if(prompt.value.trim()===body) prompt.value="";
     } else {
       writeLine("FORWARDED",body);
     }
@@ -286,11 +288,14 @@ async function ask(target,message,forwarded=false) {
     last={speaker:target,text:data.reply};
     setActivity("Received "+target.toUpperCase()+" reply", "Unverified model response. No virtual-world authority was granted.");
   } catch(err) {
+    // Leave the current draft untouched; a newer edit or deletion may be
+    // intentional, so never resurrect an older request into the transcript.
+    // No failed request is automatically retried or admitted to model history.
     writeLine("ERROR",String(err.message||err),true);
   } finally {setBusy(false);}
 }
 sendButton.addEventListener("click",()=>{
-  const text=prompt.value.trim();if(!text)return;prompt.value="";ask(selected,text);
+  const text=prompt.value.trim();if(!text)return;ask(selected,text);
 });
 prompt.addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendButton.click();}});
 forwardButton.addEventListener("click",()=>{

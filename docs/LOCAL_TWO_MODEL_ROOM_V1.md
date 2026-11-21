@@ -48,6 +48,28 @@ better, that hidden reasoning was experienced, or that a canonical Vera
 identity or private memory was loaded. A generic model can still give a
 poor, inaccurate or misleading answer.
 
+## Recoverable send failure without overriding draft changes
+
+In the 3D browser, an unedited composer stays populated while a local
+inference request is pending. A successful reply clears that composer **only
+if the text still matches the submitted message**; otherwise, newer edits
+remain available. A failed request does not clear an unchanged draft or
+silently retry/forward it. It also does **not** resurrect earlier words into
+the transcript after the person edits or deliberately clears the composer.
+Failed turns are not admitted to subsequent model conversation context.
+
+An HTTP failure does not prove the local inference engine never received or
+processed the original request; manually retrying can perform another
+inference. None of this survives a tab refresh, creates persistent memory,
+authenticates either model identity, or implies a remote cancellation.
+
+The optional `python -B tests/manual_sandbox_draft_recovery.py` runs an
+actual local Chromium/Edge/Puppeteer browser with a fake backend and injected
+synthetic HTTP 503 responses. It checks unchanged draft recovery, explicit
+retry only, preservation of newer edits on success/failure, respect for
+deliberate clearing, no external network requests and no automated forwarding.
+No private model or user transcript is loaded in this probe.
+
 ## Optional real-browser acceptance probe
 
 The Python/HTTP tests do not establish whether the browser controls actually work.
