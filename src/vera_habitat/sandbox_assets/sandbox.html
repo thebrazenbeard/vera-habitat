@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Habitat · The First Room</title>
+<style>
+:root{color-scheme:dark;--ink:#e7f3fc;--muted:#99afc5;--line:#345169;--teal:#72e7d5;--violet:#bca1ff;--amber:#edc27c}
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;background:#07131d;color:var(--ink)}
+button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity:.4;cursor:not-allowed}
+.shell{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr) 326px;grid-template-rows:auto minmax(540px,1fr) auto}
+header{grid-column:1/-1;display:flex;justify-content:space-between;gap:16px;align-items:center;padding:14px 24px;border-bottom:1px solid #284255;background:#0a1926}
+.brand{font-size:19px;font-weight:700;letter-spacing:.15em}.brand i{font-style:normal;color:var(--teal)}
+.overline{color:var(--teal);text-transform:uppercase;font-size:10px;letter-spacing:.19em;font-weight:700}
+header small{color:var(--muted)}a{color:var(--teal)}.topright{display:flex;align-items:center;gap:16px}
+.chip{border:1px solid #3c6575;border-radius:100px;padding:6px 10px;font:11px ui-monospace,monospace;color:#c8eef5}
+.world{position:relative;min-height:0;overflow:hidden;background:#0b1927}
+#world-canvas{width:100%;height:100%;display:block;touch-action:none}
+.world>canvas:focus{outline:2px solid var(--teal);outline-offset:-4px}
+.world-hud{position:absolute;pointer-events:none;left:22px;top:19px;text-shadow:0 2px 12px #021017}
+.world-hud h1{font-size:27px;font-weight:580;margin:4px 0 5px;letter-spacing:.025em}
+.world-hud p{color:#becddf;margin:0;max-width:390px}
+#world-status{display:inline-block;margin-top:12px;padding:6px 10px;font-size:11px;border-radius:7px;background:#112333cb;border:1px solid #476079;color:#c4f4e8}
+#world-status[data-state="unavailable"]{color:#ffd1c8}
+.labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.name-tag{position:absolute;transform:translate(-50%,-50%);white-space:nowrap;font:12px ui-monospace,monospace;letter-spacing:.08em;color:#f2ecff;background:#0b1925dc;border:1px solid #8f81c2;border-radius:6px;padding:5px 10px;opacity:0}
+.name-tag[data-name="jack"]{color:#ffe8b7;border-color:#a98a59}
+.focus-hud{position:absolute;left:22px;bottom:20px;right:22px;display:flex;justify-content:space-between;gap:14px;align-items:flex-end;pointer-events:none}
+.hud-panel{border:1px solid #456275;background:#0b1d2bdc;border-radius:9px;padding:10px 13px;max-width:440px;box-shadow:0 10px 25px #0004}
+.hud-panel strong{color:#dceef6}.hud-panel p{margin:4px 0 0;color:#a9c4d6;font-size:12px}
+.coords{font:11px ui-monospace,monospace;color:#b9d6e6;background:#091925ca;border:1px solid #456275;border-radius:7px;padding:8px 10px}
+.side{background:#0c1c2a;border-left:1px solid #284255;display:flex;flex-direction:column;min-height:0}
+.side-header{padding:18px 19px 10px;border-bottom:1px solid #304659}
+.side h2{margin:4px 0 5px;font-size:18px;font-weight:620}.hint{font-size:12px;color:var(--muted);margin:4px 0 9px}
+.identity-list{display:flex;gap:8px;margin:11px 0}.identity{padding:8px 10px;border-radius:8px;border:1px solid #344e65;background:#132736;flex:1;font-size:12px;text-align:left;color:#dbe7f5}.identity.selected{border-color:var(--teal);background:#163944}
+.identity small{display:block;font-size:10px;color:#8ea8b9}.dot{display:inline-block;width:8px;height:8px;margin-right:5px;border-radius:50%;background:#b59be8}.dot.amber{background:#e6b875}
+#transcript{flex:1;min-height:160px;overflow:auto;padding:16px 18px;white-space:pre-wrap;overflow-wrap:anywhere}
+#transcript p{margin:0 0 13px;background:#122a3b;border-radius:9px;padding:10px 12px}
+#transcript b{display:block;font-size:10px;letter-spacing:.08em;color:var(--teal);margin-bottom:4px}
+#transcript .system-line{border-left:2px solid #597083;background:transparent;color:#b2c3d5;font-size:12px}
+.composer{padding:14px 16px 19px;border-top:1px solid #304659}
+label{font-size:12px;color:#9ec3d8}.composer textarea{width:100%;resize:vertical;max-height:125px;min-height:64px;background:#102838;color:#f2fbff;border:1px solid #486075;border-radius:8px;padding:9px;margin:7px 0;outline-offset:2px}
+.actions{display:flex;gap:7px;flex-wrap:wrap}.actions button{padding:8px 10px;color:#d8f1f7;background:#19394a;border:1px solid #42687c;border-radius:7px;font-size:12px}
+.actions #send{background:#196d73;color:#edffff;border-color:#25848b;flex:1}
+footer{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 23px;border-top:1px solid #294356;background:#071522;color:#a0b9cb;font-size:11px}
+.keys kbd{border:1px solid #59738d;border-radius:4px;padding:2px 5px;background:#203547;color:#e5f4fc}
+.touch{position:absolute;right:22px;bottom:70px;display:none;gap:4px;grid-template-columns:repeat(3,42px);grid-template-rows:repeat(2,40px)}
+.touch button{border:1px solid #7397a8;border-radius:8px;color:#def3f6;background:#183344df;font-size:17px}
+.touch button[data-move="forward"]{grid-column:2}.touch button[data-move="left"]{grid-column:1;grid-row:2}.touch button[data-move="back"]{grid-column:2;grid-row:2}.touch button[data-move="right"]{grid-column:3;grid-row:2}
+@media(pointer:coarse){.touch{display:grid}}
+@media(max-width:900px){.shell{grid-template-columns:1fr;grid-template-rows:auto minmax(480px,62vh) minmax(390px,auto) auto}.side{border-left:0;border-top:1px solid #294356}.world-hud{left:15px;top:12px}.world-hud h1{font-size:23px}.focus-hud{left:13px;right:13px;bottom:13px}header{padding:12px 16px}#transcript{min-height:110px;max-height:210px}.topright small{display:none}}
+@media(max-width:480px){.shell{grid-template-rows:auto minmax(440px,65vh) minmax(320px,auto) auto}.brand{font-size:16px}.world-hud p{font-size:11px;max-width:220px}.coords{font-size:10px}.hud-panel{max-width:225px}.touch{right:10px;bottom:85px}.chip{font-size:10px}}
+</style></head>
+<body><div class="shell">
+<header><div><div class="overline">Local experimental environment · field 01</div><div class="brand">VERA <i>/</i> HABITAT</div></div><div class="topright"><span class="chip">LOCAL · NO PERSISTENCE</span><a href="/">Original text room</a></div></header>
+<div class="world">
+<canvas id="world-canvas" tabindex="0" aria-label="Interactive 3D room; use W A S D to move, E to interact, and mouse drag to rotate the view"></canvas>
+<div class="world-hud"><span class="overline">The first room / prototype</span><h1>Walk into the conversation.</h1><p>Explore a real-time 3D space. Meet two unverified model stations. Activate objects. Nothing here grants authority over physical systems.</p><span id="world-status" data-state="loading" role="status">Play in 3D - Loading local Three.js renderer…</span></div>
+<div class="labels"><div id="tag-vera" class="name-tag" data-name="vera">VERA · test avatar</div><div id="tag-jack" class="name-tag" data-name="jack">JACK · test avatar</div></div>
+<div class="focus-hud"><div class="hud-panel"><strong id="nearby">Explore the room</strong><p id="activity">WASD / arrows move · drag mouse to orbit · E interact · click an object to inspect</p></div><div class="coords" id="coords">X 0.0 · Z 3.8</div></div>
+<div class="touch" aria-label="Touch movement controls"><button data-move="forward" aria-label="Forward">↑</button><button data-move="left" aria-label="Left">←</button><button data-move="back" aria-label="Back">↓</button><button data-move="right" aria-label="Right">→</button></div>
+</div>
+<aside class="side"><div class="side-header"><div class="overline">Semantic communication / local only</div><h2>Conversation deck</h2><p class="hint">Walk near an avatar or select its station. Both are unverified model bindings; the shapes are placeholders, not your finished character meshes.</p>
+<div class="identity-list"><button class="identity selected" data-target="vera"><span class="dot"></span>VERA station<small>generic local test model</small></button><button class="identity" data-target="jack"><span class="dot amber"></span>JACK station<small>native analytic or test model</small></button></div></div>
+<div id="transcript" role="log" aria-live="polite"><p class="system-line">Room connected locally. Walking and object interactions stay in this tab. To ask a model, type below.</p></div>
+<div class="composer"><label for="prompt">Message to <span id="target-label">VERA station</span></label><textarea id="prompt" rows="3" maxlength="2000" placeholder="Speak to the selected model…"></textarea><div class="actions"><button id="send">Send message</button><button id="forward" disabled>Forward last reply</button><button id="clear">Clear</button></div><p class="hint">No automatic agent loop. Requests go only to your local model endpoint. Private JACK replies can reflect private sources.</p></div>
+</aside>
+<footer><span class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · <kbd>E</kbd> interact · drag orbit · click examine</span><span>Three.js 0.187.0 · bundled locally · <strong>Unverified avatars</strong></span></footer>
+</div><script type="module" src="/sandbox/sandbox.js"></script></body></html>
