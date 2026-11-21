@@ -56,6 +56,12 @@ assert restored.snapshot() == scene
 
 An accepted movement changes this *simulated* state only. Reusing a proposal action ID is rejected; restoring a checkpoint does not bind the reconstructed scene to an existing runtime, trusted owner, or device.
 
+## Local two-slot chat preview (opt-in)
+
+A **manually started, loopback-only** browser preview can send and forward messages between two independently configured *local Ollama model slots*. It uses Habitat's detached two-entity simulation projection, but shows placeholders rather than 3D character models; it neither trains JACK nor authenticates Vera. The only configured destination is localhost. There is no remote hosting, automatic conversation, persistent room transcript, or authorization for external effects.
+
+Run the new vera-habitat-local-room console script with separately selected installed local model tags after a local editable install. See [Local two-model room](docs/LOCAL_TWO_MODEL_ROOM_V1.md) for limits, tests and the blockers to real JACK, finished character geometry, and complete user interaction.
+
 ## Optional research and integration surfaces
 
 - **Synthetic navigation:** `python -m vera_habitat.navigation_eval --help` documents reproducible train/holdout comparisons, an optional layout-overlap audit, and replay-verifiable evaluation bundles. See [navigation evaluation](docs/NAVIGATION_EVALUATION_V1.md) and [evaluation bundle](docs/EVALUATION_BUNDLE_V1.md). Scores do not establish trained-model generalization.
