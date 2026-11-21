@@ -21,6 +21,15 @@ MODEL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}(?:/[A-Za-z0-9][A-Za-
 MAX_BODY = 20000
 MAX_MESSAGE = 2000
 MAX_CONTEXT = 10
+# An exact allowlist: never map arbitrary user-supplied paths into the host filesystem.
+SANDBOX_ASSETS = {
+    "/sandbox": ("sandbox.html", "text/html; charset=utf-8"),
+    "/sandbox/": ("sandbox.html", "text/html; charset=utf-8"),
+    "/sandbox/sandbox.js": ("sandbox.js", "text/javascript; charset=utf-8"),
+    "/sandbox/vendor/three.module.js": ("vendor/three.module.js", "text/javascript; charset=utf-8"),
+    "/sandbox/vendor/three.core.js": ("vendor/three.core.js", "text/javascript; charset=utf-8"),
+    "/sandbox/vendor/LICENSE": ("vendor/LICENSE", "text/plain; charset=utf-8"),
+}
 
 HTML = """<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -41,7 +50,7 @@ button:disabled{opacity:.5}
 </style>
 <header><h1>Habitat: Two-model room</h1><p><small>Local experiment only.
 Neither slot authenticates a person or Vera. Circles are NOT finished 3D models.
-No saved transcript, automatic agent loop, remote access, or physical actions.</small></p></header>
+No saved transcript, automatic agent loop, remote access, or physical actions.</small></p><p><a href="/sandbox">Play in the 3D sandbox</a></p></header>
 <main><section><div class="round" aria-hidden="true"></div><h2>Vera slot</h2>
 <small>Unverified local model candidate</small></section>
 <section><div class="round" aria-hidden="true"></div><h2>JACK slot</h2>
@@ -270,7 +279,25 @@ class RoomHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html; charset=utf-8" if html
                          else "application/json; charset=utf-8")
         self.send_header("Content-Security-Policy", "default-src 'none'; "
-                         "script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+                         "script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; "
+                         "connect-src 'self'; base-uri 'none'; form-action 'none'")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_sandbox_asset(self, filename: str, media_type: str) -> None:
+        # Only fixed server-authored paths from SANDBOX_ASSETS reach this method.
+        asset = Path(__file__).with_name("sandbox_assets") / filename
+        try:
+            body = asset.read_bytes()
+        except OSError:
+            return self.send(503, {"error": "local sandbox asset unavailable"})
+        self.send_response(200)
+        self.send_header("Content-Type", media_type)
+        self.send_header("Content-Security-Policy", "default-src 'none'; "
+                         "script-src 'self'; style-src 'unsafe-inline'; "
                          "connect-src 'self'; base-uri 'none'; form-action 'none'")
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -281,6 +308,8 @@ class RoomHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if not self.allowed_request():
             return self.send(403, {"error": "loopback origin required"})
+        if self.path in SANDBOX_ASSETS:
+            return self.send_sandbox_asset(*SANDBOX_ASSETS[self.path])
         if self.path == "/":
             return self.send(200, HTML, html=True)
         if self.path == "/api/scene":
