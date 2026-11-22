@@ -261,43 +261,54 @@ function writeLine(name,text,isSystem=false) {
 function setBusy(value) {
   busy=value;sendButton.disabled=value;forwardButton.disabled=value||!last;
 }
-async function ask(target,message,forwarded=false) {
+async function ask(target,message,forwardedFrom=null) {
   const body=String(message||"").trim();
   if(!body||busy)return;
   const ctx=history.slice(-10);
+  const turn={target,message:body,context:ctx};
+  if(forwardedFrom)turn.forwarded_from=forwardedFrom;
   setBusy(true);
   try {
     const reply=await fetch("/api/turn",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({target,message:body,context:ctx})
+      body:JSON.stringify(turn)
     });
     const data=await reply.json();
     if(!reply.ok)throw Error(data.error||"Local inference request failed");
-    if(!forwarded) {
+    if(!forwardedFrom) {
       writeLine("YOU",body);
       history.push({speaker:"human",text:body});
+      // Do not erase a newer draft typed while the request was in flight.
+      if(prompt.value.trim()===body) prompt.value="";
     } else {
       writeLine("FORWARDED",body);
     }
     writeLine(target.toUpperCase()+" · UNVERIFIED",data.reply);
-    history.push({speaker:target,text:data.reply});
+    // HTTP replies may be 4,000 chars; context entries are capped at 2,000.
+    // Preserve the full visible answer, but bound subsequent model context.
+    history.push({speaker:target,text:data.reply.slice(0,2000)});
     history=history.slice(-10);
     last={speaker:target,text:data.reply};
     setActivity("Received "+target.toUpperCase()+" reply", "Unverified model response. No virtual-world authority was granted.");
   } catch(err) {
+    // Leave the current draft untouched; a newer edit or deletion may be
+    // intentional, so never resurrect an older request into the transcript.
+    // No failed request is automatically retried or admitted to model history.
     writeLine("ERROR",String(err.message||err),true);
   } finally {setBusy(false);}
 }
 sendButton.addEventListener("click",()=>{
-  const text=prompt.value.trim();if(!text)return;prompt.value="";ask(selected,text);
+  const text=prompt.value.trim();if(!text)return;ask(selected,text);
 });
 prompt.addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendButton.click();}});
 forwardButton.addEventListener("click",()=>{
   if(!last||busy)return;
   const to=last.speaker==="vera"?"jack":"vera";
   choose(to);
-  ask(to,"Other local model said: "+last.text.slice(0,1900),true);
+  // Preserve claimed source separately from its text, not as a natural-
+  // language authority claim; local room still treats the claim as unverified.
+  ask(to,last.text.slice(0,1900),last.speaker);
 });
 document.getElementById("clear").addEventListener("click",()=>{
   if(busy)return;

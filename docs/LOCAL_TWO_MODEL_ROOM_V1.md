@@ -24,10 +24,51 @@ The JACK slot now launches an isolated `python -I -B -c` subprocess using a fixe
 ## Boundaries
 
 - The listener binds **only 127.0.0.1**. Both the `Host` and `Origin` are checked for loopback. It does not accept external URLs, files, arbitrary model tags from requests, or caller-provided system prompts.
-- Generic model inference goes only to fixed `http://127.0.0.1:11434/api/chat` (proxy environment bypassed). Native JACK executes only an explicitly hash-pinned local Python source and private model in a bounded subprocess; no arbitrary route is accepted from the browser. Generic tags are validated at startup. Each inference is bounded to 160 output tokens and 75 seconds. Request body, message and history lengths are capped; responses are displayed using DOM text nodes, not model-generated HTML.
+- Generic model inference goes only to fixed `http://127.0.0.1:11434/api/chat` (proxy environment bypassed). Native JACK executes only an explicitly hash-pinned local Python source and private model in a bounded subprocess; no arbitrary route is accepted from the browser. Generic tags are validated at startup. Each local inference attempt is bounded to 160 output tokens and 75 seconds; one explicit user turn can cause **at most two local attempts** under the narrow hidden-reasoning recovery rule below. Request body, message and history lengths are capped; responses are displayed using DOM text nodes, not model-generated HTML.
 - This is **not authenticated against other local processes or a compromised browser profile**. It must not be publicly exposed, proxied, or treated as a production multi-user service. A local prompt can still influence its model, but cannot trigger tools, filesystem writes, device control, or permissions through the room.
 - Scene state is the existing `HabitatRuntime` typed simulation only: two AVATAR entities with `geometry=NOT_BOUND`, `binding=UNVERIFIED_LOCAL_MODEL`. `GET /api/scene` is read-only. Browser chat changes neither simulation revision nor external state; the model call itself is external inference but does not receive Habitat effect authority.
 - No custom traits, private memories, biometric data, images, credentials, or training examples are shipped, recorded, or sent to GitHub by this preview.
+
+## Visible response without globally disabling reasoning
+
+The Ollama slot first sends the current request **without overriding the model's
+default thinking mode**. A valid visible answer returns unchanged. Only when
+that first response is visibly empty, explicitly `done=true` with
+`done_reason=length`, and carries nonempty hidden `message.thinking`,
+Habitat retries the same local model and messages **once** with `think:false`
+to reserve the second 160-token budget for a visible response. Another empty
+answer fails closed; missing/malformed provider metadata and ordinary HTTP
+failures do not trigger repeated calls. Nothing is autonomously forwarded to
+the other slot. The user's single explicit send can therefore cause two
+local inference calls, with additional latency and compute cost; no private
+text is added to CLI arguments or GitHub records by this recovery path.
+
+This is visibility/reliability recovery, not evidence that a model reasons
+better, that hidden reasoning was experienced, or that a canonical Vera
+identity or private memory was loaded. A generic model can still give a
+poor, inaccurate or misleading answer.
+
+## Recoverable send failure without overriding draft changes
+
+In the 3D browser, an unedited composer stays populated while a local
+inference request is pending. A successful reply clears that composer **only
+if the text still matches the submitted message**; otherwise, newer edits
+remain available. A failed request does not clear an unchanged draft or
+silently retry/forward it. It also does **not** resurrect earlier words into
+the transcript after the person edits or deliberately clears the composer.
+Failed turns are not admitted to subsequent model conversation context.
+
+An HTTP failure does not prove the local inference engine never received or
+processed the original request; manually retrying can perform another
+inference. None of this survives a tab refresh, creates persistent memory,
+authenticates either model identity, or implies a remote cancellation.
+
+The optional `python -B tests/manual_sandbox_draft_recovery.py` runs an
+actual local Chromium/Edge/Puppeteer browser with a fake backend and injected
+synthetic HTTP 503 responses. It checks unchanged draft recovery, explicit
+retry only, preservation of newer edits on success/failure, respect for
+deliberate clearing, no external network requests and no automated forwarding.
+No private model or user transcript is loaded in this probe.
 
 ## Optional real-browser acceptance probe
 
@@ -62,3 +103,40 @@ not part of the Habitat Python package or production runtime.
 3. **Habitat interaction:** Add vetted local or authenticated browser GLB renderer/animation, bind each verified model to its verified avatar, add speech/gesture routing if wanted, carry out real browser usability and privacy tests, and obtain scoped deployment authority before persistent hosting or remote exposure.
 
 Tests: `python -m pytest tests/test_local_room.py`. These include origin rejection, request bounds, neutral fake model exchanges, the native JACK dual-hash negative controls, read-only projection, and XSS text handling. Live local smoke tests may use generic Ollama tags; they are not demonstrations of the eventual two personal AI models.
+
+
+## Explicit, bounded forwarding attribution (source candidate)
+
+The browser sends a normal human request with the legacy three-key `target`,
+`message`, `context` schema. Only the user-clicked **Pass last reply to
+other slot** action adds a distinct `forwarded_from` field (`vera` or
+`jack`); it sends the forwarded text itself, not a free-form prefix
+claiming a model has spoken. The server checks that the declared slot differs
+from the recipient and matches the most recent context speaker, with the
+forwarded text matching that last observation (up to 1,900 characters).
+Invalid, self-directed, unknown, or mismatched claims are rejected before
+inference. Older human clients remain accepted.
+
+The recipient receives the forwarded message under an ordinary `user`
+role labeled `Claimed VERA/JACK slot forward (unverified)`. A browser request
+cannot authenticate another model or mint a system, developer, identity,
+consent, correction-authority, or effect role. Other context items still
+represent caller-provided claims; the server does not reconstruct or certify
+a complete conversation. Synthetic HTTP negative tests inspect the actual
+messages that would reach a model.
+
+A separate boundary was exposed by the real browser: local model responses
+may be up to 4,000 characters, but individual subsequent context entries
+are limited to 2,000. The browser now keeps the **full visible reply** while
+truncating only the model history sent on later turns; an explicit forward
+takes up to the first 1,900 characters. This is documented information loss,
+not semantic summarization or trustworthy memory. The real Edge test
+`python -B tests/manual_sandbox_long_forward.py` reproduces the previous
+failure with a synthetic reply longer than 2,000 characters and verifies
+the corrected bounded transport and claimed-source labeling without
+loading private identity data, real models, or external URLs.
+
+These measures improve transport and role separation, **not** actual
+semantic fidelity: a local model can still misunderstand a correction or
+treat claimed source text as an instruction. Qualified multi-turn behavioral
+evaluation remains a separate HOLD.
