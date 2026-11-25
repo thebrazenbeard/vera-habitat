@@ -51,8 +51,15 @@ def _validate_scene_graph(document: dict) -> None:
     scenes = _object_array(document, "scenes")
     if "scene" in document:
         _index(document["scene"], len(scenes), "default scene")
-    for scene in scenes:
-        _references(scene.get("nodes", []), len(nodes), "scene node")
+    meshes = _object_array(document, "meshes")
+    skins = _object_array(document, "skins")
+    roots = [root for scene in scenes
+             for root in _references(scene.get("nodes", []), len(nodes), "scene node")]
+    for node in nodes:
+        if "mesh" in node:
+            _index(node["mesh"], len(meshes), "node mesh")
+        if "skin" in node:
+            _index(node["skin"], len(skins), "node skin")
     edges = [_references(node.get("children", []), len(nodes), "child node")
              for node in nodes]
     # Kahn's algorithm detects cycles, including unreachable cycles, without
@@ -61,6 +68,10 @@ def _validate_scene_graph(document: dict) -> None:
     for children in edges:
         for child in children:
             indegree[child] += 1
+            if indegree[child] > 1:
+                raise ValueError("GLB node has multiple parents")
+    if any(indegree[root] for root in roots):
+        raise ValueError("GLB scene root is also a child node")
     pending = [i for i, degree in enumerate(indegree) if degree == 0]
     visited = 0
     while pending:
